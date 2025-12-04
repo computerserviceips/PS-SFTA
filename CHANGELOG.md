@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Seed `OpenWithProgids` for new associations to suppress the Windows user-choice prompt when the ProgId hash is already applied.
 - Prevent log initialization and write failures from throwing invalid variable reference errors by formatting verbose messages safely.
+- Suppress registry provider output when creating UserChoice and UserChoiceLatest entries so silent mode stays quiet.
 
 ### Changed
 - Align licensing artifacts with the MIT license, retaining prior Danysys authorship alongside the updated 2025 Computerservice ips copyright.

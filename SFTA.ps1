@@ -689,8 +689,8 @@ function Set-FTA {
         $registryPath = "Registry::$keyPath"
         Write-Verbose "Write Reg Extension UserChoice OK"
         & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
-        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
-        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
+        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
+        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force | Out-Null}"
 
         $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience"
         if ($newHash) {
@@ -698,10 +698,10 @@ function Set-FTA {
           $latestRegistryPath = "Registry::$latestKeyPath"
           Write-Verbose "Write Reg Extension UserChoiceLatest OK"
           & $powershellTempPath -Command "& {New-Item -Path '$latestRegistryPath' -Force | Out-Null}"
-          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
-          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name Hash -PropertyType String -Value '$newHash' -Force}"
+          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
+          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name Hash -PropertyType String -Value '$newHash' -Force | Out-Null}"
           & $powershellTempPath -Command "& {New-Item -Path '$latestRegistryPath\\ProgId' -Force | Out-Null}"
-          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath\\ProgId' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
+          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath\\ProgId' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
         }
       }
       catch {
@@ -740,9 +740,9 @@ function Set-FTA {
       $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Protocol\UserChoice"
       $registryPath = "Registry::$keyPath"
       Write-Verbose "Write Reg Protocol UserChoice OK"
-      & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
+        & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
+        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
+        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force | Out-Null}"
     }
     catch {
       throw "Write Reg Protocol UserChoice FAILED"
