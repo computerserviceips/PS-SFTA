@@ -364,17 +364,26 @@ function Set-FTA {
   Write-Verbose "Extension/Protocol: $Extension"
 
   function local:Disable-NewAppAlertToast {
-    try {
-      $policyPath = 'HKCU:\Software\Policies\Microsoft\Windows\Explorer'
-      if (-not (Test-Path -Path $policyPath)) {
-        New-Item -Path $policyPath -Force | Out-Null
-      }
+    $policyRoots = @('HKCU:\Software\Policies\Microsoft\Windows\Explorer')
 
-      $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
-      Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
+    $principal = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+      $policyRoots += 'HKLM:\Software\Policies\Microsoft\Windows\Explorer'
     }
-    catch {
-      Write-Verbose "Failed to disable new app alert toast"
+
+    foreach ($policyPath in $policyRoots) {
+      try {
+        if (-not (Test-Path -Path $policyPath)) {
+          New-Item -Path $policyPath -Force | Out-Null
+        }
+
+        $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
+        Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
+      }
+      catch {
+        Write-Verbose "Failed to disable new app alert toast at $policyPath"
+      }
     }
   }
 
