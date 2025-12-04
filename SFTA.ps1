@@ -365,7 +365,7 @@ function Set-FTA {
       New-Item -Path $logFilePath -ItemType File -Force | Out-Null
     }
     catch {
-      Write-Verbose "Unable to initialize log file at $logFilePath: $_"
+      Write-Verbose ("Unable to initialize log file at {0}: {1}" -f $logFilePath, $_)
       $logFilePath = $null
     }
   }
@@ -384,7 +384,7 @@ function Set-FTA {
         "$timestamp [$Level] $Message" | Out-File -FilePath $logFilePath -Append -Encoding utf8
       }
       catch {
-        Write-Verbose "Failed to write to log file $logFilePath: $_"
+        Write-Verbose ("Failed to write to log file {0}: {1}" -f $logFilePath, $_)
       }
     }
 
