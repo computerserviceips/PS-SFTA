@@ -514,7 +514,6 @@ function Set-FTA {
       catch {} 
     } 
 
-    
     try {
       $keyPath = "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
       Write-Verbose "Remove Extension UserChoice Key If Exist: $keyPath"
@@ -522,6 +521,16 @@ function Set-FTA {
     }
     catch {
       Write-Verbose "Extension UserChoice Key No Exist: $keyPath"
+    }
+
+
+    try {
+      $openWithKeyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\OpenWithProgids"
+      [Microsoft.Win32.Registry]::SetValue($openWithKeyPath, $ProgId, ([byte[]]@()), [Microsoft.Win32.RegistryValueKind]::None)
+      Write-Verbose "Write Reg Extension OpenWithProgids OK: $openWithKeyPath"
+    }
+    catch {
+      Write-Verbose "Write Reg Extension OpenWithProgids FAILED: $openWithKeyPath"
     }
 
 
@@ -537,7 +546,6 @@ function Set-FTA {
       throw "Write Reg Extension UserChoice FAILED"
     }
   }
-
 
   function local:Write-ProtocolKeys {
     param (

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Work around UCPD.sys protections by cloning PowerShell with a dynamically generated helper name when updating UserChoice entries.
 - Document the new behaviors and usage in the README.
 
+### Fixed
+- Seed `OpenWithProgids` for new associations to suppress the Windows user-choice prompt when the ProgId hash is already applied.
+
 ### Changed
 - Align licensing artifacts with the MIT license, retaining prior Danysys authorship alongside the updated 2025 Computerservice ips copyright.
 
