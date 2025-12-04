@@ -1,6 +1,6 @@
 # PowerShell SFTA
 
-[![Latest Version](https://img.shields.io/badge/Latest-v1.2.0-green.svg)]()
+[![Latest Version](https://img.shields.io/badge/Latest-v1.3.0-green.svg)]()
 [![MIT License](https://img.shields.io/github/license/mashape/apistatus.svg)]()
 [![Made with Love](https://img.shields.io/badge/Made%20with-%E2%9D%A4-red.svg?colorB=11a9f7)]()
 
@@ -13,6 +13,7 @@ PowerShell Set File/Protocol Type Association Default Application Windows 10/11
 * Set Protocol Association.
 * Get File Type Association.
 * List File Type Association.
+* Remove File Type Association.
 * Get Protocol Type Association.
 * List Protocol Type Association.
 * Register Application.
@@ -38,6 +39,18 @@ Set-FTA Applications\SumatraPDF.exe .pdf
 
 ```
 
+##### Read the current .pdf association including the registry hash:
+```powershell
+Get-FTA -Extension .pdf -Detailed
+
+```
+
+##### Remove a custom or user-specific association for .pdf:
+```powershell
+Remove-FTA -Extension .pdf -ExtensionOnly
+
+```
+
 
 ##### Set Google Chrome as Default for http Protocol:
 ```powershell
@@ -50,6 +63,10 @@ Set-PTA ChromeHTML http
 Register-FTA "C:\SumatraPDF.exe" .pdf -Icon "shell32.dll,100"
 
 ```
+
+### Notes
+
+- Windows KB5034765 introduced a UCPD.sys protection that blocks registry writes to `UserChoice` keys for some extensions and protocols. SFTA now writes those values through a dynamically named temporary copy of `powershell.exe` to ensure associations can be updated successfully.
 
 ## Additional Instructions
 
@@ -84,4 +101,5 @@ See [CHANGELOG.md](CHANGELOG.md)
 
 Usage is provided under the [MIT](https://choosealicense.com/licenses/mit/) License.
 
-Copyright © 2022, [Danysys.](https://www.danysys.com)
+Copyright © 2022, Danysys. <danysys.com>
+Copyright © 2025, Computerservice ips

@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 1.3.0 - 2025-12-04
+### Added
+- Provide detailed file association information via `Get-FTA -Detailed` and allow clearing user-specific associations with `Remove-FTA` without supplying a target application.
+- Work around UCPD.sys protections by cloning PowerShell with a dynamically generated helper name when updating UserChoice entries.
+- Document the new behaviors and usage in the README.
+
+### Changed
+- Align licensing artifacts with the MIT license, retaining prior Danysys authorship alongside the updated 2025 Computerservice ips copyright.
+
 ## 1.2.0 - 2022-04-17
 ### Added
 - Refresh ApplicationAssociationToasts to avoid showing OpenWith.exe when no default application is selected for the first time.
