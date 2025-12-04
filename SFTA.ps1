@@ -338,13 +338,64 @@ function Set-FTA {
     $DomainSID,
 
     [switch]
-    $SuppressNewAppAlert
+    $SuppressNewAppAlert,
+
+    [String]
+    $LogFile,
+
+    [switch]
+    $Silent
   )
 
   $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
   $powershellTempName = "powershell_{0}.exe" -f ([System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetRandomFileName()))
   $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
   $tempPowerShellCreated = $false
+
+  $logFilePath = $null
+  if ($LogFile) {
+    $logFilePath = If ([System.IO.Path]::IsPathRooted($LogFile)) { $LogFile } Else { Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath $LogFile }
+
+    try {
+      $logDirectory = Split-Path -Path $logFilePath -Parent
+      if ($logDirectory -and -not (Test-Path -Path $logDirectory)) {
+        New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
+      }
+
+      New-Item -Path $logFilePath -ItemType File -Force | Out-Null
+    }
+    catch {
+      Write-Verbose "Unable to initialize log file at $logFilePath: $_"
+      $logFilePath = $null
+    }
+  }
+
+  function local:Write-LogMessage {
+    param (
+      [string] $Message,
+      [string] $Level = 'INFO',
+      [string] $Color = 'Gray'
+    )
+
+    $timestamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+
+    if ($logFilePath) {
+      try {
+        "$timestamp [$Level] $Message" | Out-File -FilePath $logFilePath -Append -Encoding utf8
+      }
+      catch {
+        Write-Verbose "Failed to write to log file $logFilePath: $_"
+      }
+    }
+
+    if (-not $Silent) {
+      switch ($Level) {
+        'WARN'  { Write-Warning "[SFTA] $Message" }
+        'ERROR' { Write-Error "[SFTA] $Message" -ErrorAction Continue }
+        default { Write-Host "[SFTA] $Message" -ForegroundColor $Color }
+      }
+    }
+  }
 
   try {
     # Use a temporary copy of PowerShell to bypass UCPD.sys registry write restrictions (e.g., KB5034765)
@@ -361,7 +412,11 @@ function Set-FTA {
   }
 
   $targetType = If ($Extension.Contains(".")) { "extension" } Else { "protocol" }
-  Write-Host "[SFTA] Applying default $targetType '$Extension' to ProgId '$ProgId'..." -ForegroundColor Cyan
+  if ($logFilePath) {
+    Write-LogMessage "Logging enabled at: $logFilePath" 'INFO' 'Gray'
+  }
+
+  Write-LogMessage "Applying default $targetType '$Extension' to ProgId '$ProgId'..." 'INFO' 'Cyan'
 
   Write-Verbose "ProgId: $ProgId"
   Write-Verbose "Extension/Protocol: $Extension"
@@ -391,7 +446,7 @@ function Set-FTA {
   }
 
   if ($SuppressNewAppAlert) {
-    Write-Host "[SFTA] Disabling new app alert prompts..." -ForegroundColor Yellow
+    Write-LogMessage "Disabling new app alert prompts..." 'INFO' 'Yellow'
     Disable-NewAppAlertToast
   }
 
@@ -470,7 +525,7 @@ function Set-FTA {
   }
 
   function local:Restart-ExplorerShell {
-    Write-Host "[SFTA] Restarting explorer.exe to apply the changes..." -ForegroundColor Yellow
+    Write-LogMessage "Restarting explorer.exe to apply the changes..." 'INFO' 'Yellow'
 
     try {
       $existing = Get-Process -Name explorer -ErrorAction SilentlyContinue
@@ -479,15 +534,15 @@ function Set-FTA {
       }
     }
     catch {
-      Write-Warning "Could not stop explorer.exe automatically: $_"
+      Write-LogMessage "Could not stop explorer.exe automatically: $_" 'WARN' 'Yellow'
     }
 
     try {
       Start-Process -FilePath (Join-Path -Path $env:SystemRoot -ChildPath 'explorer.exe') | Out-Null
-      Write-Host "[SFTA] explorer.exe restarted successfully." -ForegroundColor Green
+      Write-LogMessage "explorer.exe restarted successfully." 'INFO' 'Green'
     }
     catch {
-      Write-Warning "Failed to relaunch explorer.exe. Please start it manually to finalize defaults."
+      Write-LogMessage "Failed to relaunch explorer.exe. Please start it manually to finalize defaults." 'WARN' 'Yellow'
     }
   }
   
@@ -920,13 +975,13 @@ function Set-FTA {
     #Handle Extension Or Protocol
     if ($Extension.Contains(".")) {
       Write-Verbose "Write Registry Extension: $Extension"
-      Write-Host "[SFTA] Updating file association registry keys..." -ForegroundColor Cyan
+      Write-LogMessage "Updating file association registry keys..." 'INFO' 'Cyan'
       Write-ExtensionKeys $ProgId $Extension $progHash
 
     }
     else {
       Write-Verbose "Write Registry Protocol: $Extension"
-      Write-Host "[SFTA] Updating protocol association registry keys..." -ForegroundColor Cyan
+      Write-LogMessage "Updating protocol association registry keys..." 'INFO' 'Cyan'
       Write-ProtocolKeys $ProgId $Extension $progHash
     }
 
@@ -938,7 +993,7 @@ function Set-FTA {
 
     Update-RegistryChanges
     Restart-ExplorerShell
-    Write-Host "[SFTA] Defaults applied. Explorer was refreshed so the changes take effect immediately." -ForegroundColor Green
+    Write-LogMessage "Defaults applied. Explorer was refreshed so the changes take effect immediately." 'INFO' 'Green'
   }
   finally {
     if ($tempPowerShellCreated) {
@@ -961,10 +1016,19 @@ function Set-PTA {
     [Parameter(Mandatory = $true)]
     [String]
     $Protocol,
-      
+
     [String]
-    $Icon
+    $Icon,
+
+    [String]
+    $LogFile,
+
+    [switch]
+    $Silent,
+
+    [switch]
+    $SuppressNewAppAlert
   )
 
-  Set-FTA -ProgId $ProgId -Protocol $Protocol -Icon $Icon
+  Set-FTA -ProgId $ProgId -Protocol $Protocol -Icon $Icon -LogFile $LogFile -Silent:$Silent -SuppressNewAppAlert:$SuppressNewAppAlert
 }

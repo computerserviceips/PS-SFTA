@@ -70,6 +70,7 @@ Register-FTA "C:\SumatraPDF.exe" .pdf -Icon "shell32.dll,100"
 - When a ProgId has not previously been recorded for an extension, SFTA also seeds the corresponding `OpenWithProgids` entry so Windows does not prompt to pick an app even though the `UserChoice` hash is already present.
 - Windows Insider builds have begun migrating associations into `UserChoiceLatest` with a new machine-bound hash (`AppDefaultHashRotation` / `AppDefaultHashRotationUpdateHashes`). SFTA now writes that companion hash and `ProgId` branch when a machine ID is available so new protections don’t ignore freshly-set defaults.
 - Pass `-SuppressNewAppAlert` to disable the "new app installed" default-assignment prompts by setting the `NoNewAppAlert` policy flag for the current user (and HKLM when elevated) before writing associations.
+- Capture a run log via `-LogFile <path>`; if you pass only a filename (no directory), the log is written to your `%TEMP%` directory. Combine this with `-Silent` to run unattended without console output while still writing a transcript.
 - After setting associations, SFTA now restarts `explorer.exe` to immediately apply the new defaults in the shell and file picker dialogs.
 
 ## Additional Instructions
