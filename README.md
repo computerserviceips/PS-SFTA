@@ -18,6 +18,7 @@ PowerShell Set File/Protocol Type Association Default Application Windows 10/11
 * List Protocol Type Association.
 * Register Application.
 * Unregister Application.
+* Apply multiple file associations from a configuration file with optional group-based targeting.
 
 ## Usage
 ##### Type Get-Help command for information
@@ -38,6 +39,26 @@ Set-FTA AcroExch.Document.DC .pdf
 Set-FTA Applications\SumatraPDF.exe .pdf
 
 ```
+
+##### Set Acrobat Reader DC for .pdf only when the user is in "Adobe Acrobat Users":
+```powershell
+Set-FTA AcroExch.Document.DC .pdf -AllowedGroup "Adobe Acrobat Users"
+
+```
+
+##### Apply associations from a config file (UNC paths supported):
+```powershell
+Set-FTAFromConfig \\mydomain.local\fileshare\SetUserFTAconfig.txt -LogFile SFTA.log -Silent
+
+```
+
+Config file lines use comma-separated values:
+
+```
+.pdf, AcroExch.Document.DC, GRP_Adobe_Reader
+```
+
+The third value (group) is optional. Lines starting with `#` or blank lines are ignored. Quote group names with spaces when calling `Set-FTA` directly; config files can omit the quotes.
 
 ##### Read the current .pdf association including the registry hash:
 ```powershell
@@ -72,6 +93,7 @@ Register-FTA "C:\SumatraPDF.exe" .pdf -Icon "shell32.dll,100"
 - Pass `-SuppressNewAppAlert` to disable the "new app installed" default-assignment prompts by setting the `NoNewAppAlert` policy flag for the current user (and HKLM when elevated) before writing associations.
 - Capture a run log via `-LogFile <path>`; if you pass only a filename (no directory), the log is written to your `%TEMP%` directory. Combine this with `-Silent` to run unattended without console output while still writing a transcript.
 - After setting associations, SFTA now restarts `explorer.exe` to immediately apply the new defaults in the shell and file picker dialogs.
+- Use `-AllowedGroup` (or specify a group on each config line) to scope an association update to members of a specific local or domain group.
 
 ## Additional Instructions
 

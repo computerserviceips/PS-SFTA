@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Seed `UserChoiceLatest` alongside legacy `UserChoice` entries with the new machine-bound hash when Windows enables AppDefault hash rotation features.
 - Optional `-SuppressNewAppAlert` switch to disable "new app installed" prompts by enforcing the `NoNewAppAlert` policy before writing associations (writing to HKCU and HKLM when elevated).
 - Optional `-LogFile` and `-Silent` parameters to capture a transcript (defaulting to `%TEMP%` when only a filename is provided) and run unattended without console output.
+- Optional `-AllowedGroup` parameter and `Set-FTAFromConfig` helper to scope associations to specific groups or bulk-apply mappings from a config file (including UNC paths).
 
 ### Fixed
 - Seed `OpenWithProgids` for new associations to suppress the Windows user-choice prompt when the ProgId hash is already applied.

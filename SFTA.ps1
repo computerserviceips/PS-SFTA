@@ -334,6 +334,9 @@ function Set-FTA {
     [String]
     $Icon,
 
+    [String]
+    $AllowedGroup,
+
     [switch]
     $DomainSID,
 
@@ -397,6 +400,33 @@ function Set-FTA {
     }
   }
 
+  function local:Is-InGroup {
+    param (
+      [string] $GroupName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($GroupName)) {
+      return $true
+    }
+
+    try {
+      $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+      $principal = [Security.Principal.WindowsPrincipal] $identity
+
+      if ($principal.IsInRole($GroupName)) {
+        return $true
+      }
+
+      $sid = (New-Object Security.Principal.NTAccount($GroupName)).Translate([Security.Principal.SecurityIdentifier]).Value
+      return $principal.IsInRole($sid)
+    }
+    catch {
+      Write-Verbose "Group membership check failed for '$GroupName': $_"
+    }
+
+    return $false
+  }
+
   try {
     # Use a temporary copy of PowerShell to bypass UCPD.sys registry write restrictions (e.g., KB5034765)
     Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
@@ -417,6 +447,11 @@ function Set-FTA {
   }
 
   Write-LogMessage "Applying default $targetType '$Extension' to ProgId '$ProgId'..." 'INFO' 'Cyan'
+
+  if (-not (Is-InGroup $AllowedGroup)) {
+    Write-LogMessage "Skipping $targetType '$Extension' because the current user is not in group '$AllowedGroup'." 'WARN' 'Yellow'
+    return
+  }
 
   Write-Verbose "ProgId: $ProgId"
   Write-Verbose "Extension/Protocol: $Extension"
@@ -1031,4 +1066,98 @@ function Set-PTA {
   )
 
   Set-FTA -ProgId $ProgId -Protocol $Protocol -Icon $Icon -LogFile $LogFile -Silent:$Silent -SuppressNewAppAlert:$SuppressNewAppAlert
+}
+
+function Set-FTAFromConfig {
+  [CmdletBinding()]
+  param (
+    [Parameter(Mandatory = $true)]
+    [string]
+    $Path,
+
+    [switch]
+    $DomainSID,
+
+    [switch]
+    $SuppressNewAppAlert,
+
+    [string]
+    $LogFile,
+
+    [switch]
+    $Silent
+  )
+
+  $logFilePath = $null
+  if ($LogFile) {
+    $logFilePath = If ([System.IO.Path]::IsPathRooted($LogFile)) { $LogFile } Else { Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath $LogFile }
+
+    try {
+      $logDirectory = Split-Path -Path $logFilePath -Parent
+      if ($logDirectory -and -not (Test-Path -Path $logDirectory)) {
+        New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
+      }
+
+      New-Item -Path $logFilePath -ItemType File -Force | Out-Null
+    }
+    catch {
+      Write-Verbose ("Unable to initialize log file at {0}: {1}" -f $logFilePath, $_)
+      $logFilePath = $null
+    }
+  }
+
+  function local:Write-ConfigLog {
+    param (
+      [string] $Message,
+      [string] $Level = 'INFO',
+      [string] $Color = 'Gray'
+    )
+
+    $timestamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+
+    if ($logFilePath) {
+      try {
+        "$timestamp [$Level] $Message" | Out-File -FilePath $logFilePath -Append -Encoding utf8
+      }
+      catch {
+        Write-Verbose ("Failed to write to log file {0}: {1}" -f $logFilePath, $_)
+      }
+    }
+
+    if (-not $Silent) {
+      switch ($Level) {
+        'WARN'  { Write-Warning "[SFTA] $Message" }
+        'ERROR' { Write-Error "[SFTA] $Message" -ErrorAction Continue }
+        default { Write-Host "[SFTA] $Message" -ForegroundColor $Color }
+      }
+    }
+  }
+
+  try {
+    $resolvedPath = (Resolve-Path -Path $Path -ErrorAction Stop).ProviderPath
+  }
+  catch {
+    throw "Configuration file '$Path' was not found."
+  }
+
+  Write-ConfigLog "Reading associations from config file '$resolvedPath'..." 'INFO' 'Cyan'
+
+  $lines = Get-Content -Path $resolvedPath -ErrorAction Stop
+
+  foreach ($line in $lines) {
+    $trimmed = $line.Trim()
+    if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+
+    $parts = $trimmed -split ',', 3 | ForEach-Object { $_.Trim() }
+    if ($parts.Count -lt 2 -or [string]::IsNullOrWhiteSpace($parts[0]) -or [string]::IsNullOrWhiteSpace($parts[1])) {
+      Write-ConfigLog "Skipping invalid line: '$line'" 'WARN' 'Yellow'
+      continue
+    }
+
+    $configExtension = $parts[0]
+    $configProgId = $parts[1]
+    $configGroup = if ($parts.Count -ge 3) { $parts[2] } else { $null }
+
+    Set-FTA -ProgId $configProgId -Extension $configExtension -AllowedGroup $configGroup -DomainSID:$DomainSID -SuppressNewAppAlert:$SuppressNewAppAlert -LogFile $logFilePath -Silent:$Silent
+  }
 }
