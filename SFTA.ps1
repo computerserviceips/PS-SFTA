@@ -527,9 +527,11 @@ function Set-FTA {
 
     try {
       $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
+      $registryPath = "Registry::$keyPath"
       Write-Verbose "Write Reg Extension UserChoice OK"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$keyPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$keyPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
+      & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
+      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
+      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
     }
     catch {
       throw "Write Reg Extension UserChoice FAILED"
@@ -566,9 +568,11 @@ function Set-FTA {
 
     try {
       $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Protocol\UserChoice"
+      $registryPath = "Registry::$keyPath"
       Write-Verbose "Write Reg Protocol UserChoice OK"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$keyPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$keyPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
+      & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
+      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
+      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
     }
     catch {
       throw "Write Reg Protocol UserChoice FAILED"
