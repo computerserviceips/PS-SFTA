@@ -360,6 +360,9 @@ function Set-FTA {
     $ProgId = "SFTA." + [System.IO.Path]::GetFileNameWithoutExtension($ProgId).replace(" ", "") + $Extension
   }
 
+  $targetType = If ($Extension.Contains(".")) { "extension" } Else { "protocol" }
+  Write-Host "[SFTA] Applying default $targetType '$Extension' to ProgId '$ProgId'..." -ForegroundColor Cyan
+
   Write-Verbose "ProgId: $ProgId"
   Write-Verbose "Extension/Protocol: $Extension"
 
@@ -388,6 +391,7 @@ function Set-FTA {
   }
 
   if ($SuppressNewAppAlert) {
+    Write-Host "[SFTA] Disabling new app alert prompts..." -ForegroundColor Yellow
     Disable-NewAppAlertToast
   }
 
@@ -462,7 +466,29 @@ function Set-FTA {
     try {
       [SHChange.Notify]::Refresh()
     }
-    catch {} 
+    catch {}
+  }
+
+  function local:Restart-ExplorerShell {
+    Write-Host "[SFTA] Restarting explorer.exe to apply the changes..." -ForegroundColor Yellow
+
+    try {
+      $existing = Get-Process -Name explorer -ErrorAction SilentlyContinue
+      if ($existing) {
+        Stop-Process -Id $existing.Id -Force -ErrorAction Stop
+      }
+    }
+    catch {
+      Write-Warning "Could not stop explorer.exe automatically: $_"
+    }
+
+    try {
+      Start-Process -FilePath (Join-Path -Path $env:SystemRoot -ChildPath 'explorer.exe') | Out-Null
+      Write-Host "[SFTA] explorer.exe restarted successfully." -ForegroundColor Green
+    }
+    catch {
+      Write-Warning "Failed to relaunch explorer.exe. Please start it manually to finalize defaults."
+    }
   }
   
 
@@ -894,11 +920,13 @@ function Set-FTA {
     #Handle Extension Or Protocol
     if ($Extension.Contains(".")) {
       Write-Verbose "Write Registry Extension: $Extension"
+      Write-Host "[SFTA] Updating file association registry keys..." -ForegroundColor Cyan
       Write-ExtensionKeys $ProgId $Extension $progHash
 
     }
     else {
       Write-Verbose "Write Registry Protocol: $Extension"
+      Write-Host "[SFTA] Updating protocol association registry keys..." -ForegroundColor Cyan
       Write-ProtocolKeys $ProgId $Extension $progHash
     }
 
@@ -909,6 +937,8 @@ function Set-FTA {
     }
 
     Update-RegistryChanges
+    Restart-ExplorerShell
+    Write-Host "[SFTA] Defaults applied. Explorer was refreshed so the changes take effect immediately." -ForegroundColor Green
   }
   finally {
     if ($tempPowerShellCreated) {

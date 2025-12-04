@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Align licensing artifacts with the MIT license, retaining prior Danysys authorship alongside the updated 2025 Computerservice ips copyright.
+- Restart `explorer.exe` after applying associations and provide clearer console guidance so users know when defaults are ready.
 
 ## 1.2.0 - 2022-04-17
 ### Added
