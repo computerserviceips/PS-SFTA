@@ -363,6 +363,21 @@ function Set-FTA {
   Write-Verbose "ProgId: $ProgId"
   Write-Verbose "Extension/Protocol: $Extension"
 
+  function local:Disable-NewAppAlertToast {
+    try {
+      $policyPath = 'HKCU:\Software\Policies\Microsoft\Windows\Explorer'
+      if (-not (Test-Path -Path $policyPath)) {
+        New-Item -Path $policyPath -Force | Out-Null
+      }
+
+      $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
+      Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
+    }
+    catch {
+      Write-Verbose "Failed to disable new app alert toast"
+    }
+  }
+
   if ($SuppressNewAppAlert) {
     Disable-NewAppAlertToast
   }
@@ -421,24 +436,9 @@ function Set-FTA {
 
   }
 
-  function local:Disable-NewAppAlertToast {
-    try {
-      $policyPath = 'HKCU:\Software\Policies\Microsoft\Windows\Explorer'
-      if (-not (Test-Path -Path $policyPath)) {
-        New-Item -Path $policyPath -Force | Out-Null
-      }
-
-      $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
-      Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
-    }
-    catch {
-      Write-Verbose "Failed to disable new app alert toast"
-    }
-  }
-
   function local:Update-RegistryChanges {
     $code = @'
-    [System.Runtime.InteropServices.DllImport("Shell32.dll")] 
+    [System.Runtime.InteropServices.DllImport("Shell32.dll")]
     private static extern int SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
     public static void Refresh() {
         SHChangeNotify(0x8000000, 0, IntPtr.Zero, IntPtr.Zero);    
