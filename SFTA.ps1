@@ -330,12 +330,15 @@ function Set-FTA {
     [Alias("Protocol")]
     [String]
     $Extension,
-      
+
     [String]
     $Icon,
 
     [switch]
-    $DomainSID
+    $DomainSID,
+
+    [switch]
+    $SuppressNewAppAlert
   )
 
   $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -360,7 +363,11 @@ function Set-FTA {
   Write-Verbose "ProgId: $ProgId"
   Write-Verbose "Extension/Protocol: $Extension"
 
-  
+  if ($SuppressNewAppAlert) {
+    Disable-NewAppAlertToast
+  }
+
+
   #Write required Application Ids to ApplicationAssociationToasts
   #When more than one application associated with an Extension/Protocol is installed ApplicationAssociationToasts need to be updated
   function local:Write-RequiredApplicationAssociationToasts {
@@ -412,6 +419,21 @@ function Set-FTA {
       } 
     }
 
+  }
+
+  function local:Disable-NewAppAlertToast {
+    try {
+      $policyPath = 'HKCU:\Software\Policies\Microsoft\Windows\Explorer'
+      if (-not (Test-Path -Path $policyPath)) {
+        New-Item -Path $policyPath -Force | Out-Null
+      }
+
+      $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
+      Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
+    }
+    catch {
+      Write-Verbose "Failed to disable new app alert toast"
+    }
   }
 
   function local:Update-RegistryChanges {
