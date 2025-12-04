@@ -68,6 +68,7 @@ Register-FTA "C:\SumatraPDF.exe" .pdf -Icon "shell32.dll,100"
 
 - Windows KB5034765 introduced a UCPD.sys protection that blocks registry writes to `UserChoice` keys for some extensions and protocols. SFTA now writes those values through a dynamically named temporary copy of `powershell.exe` to ensure associations can be updated successfully.
 - When a ProgId has not previously been recorded for an extension, SFTA also seeds the corresponding `OpenWithProgids` entry so Windows does not prompt to pick an app even though the `UserChoice` hash is already present.
+- Windows Insider builds have begun migrating associations into `UserChoiceLatest` with a new machine-bound hash (`AppDefaultHashRotation` / `AppDefaultHashRotationUpdateHashes`). SFTA now writes that companion hash and `ProgId` branch when a machine ID is available so new protections don’t ignore freshly-set defaults.
 
 ## Additional Instructions
 

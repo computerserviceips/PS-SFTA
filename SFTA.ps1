@@ -435,7 +435,7 @@ function Set-FTA {
   }
   
 
-  function local:Set-Icon {
+    function local:Set-Icon {
     param (
       [Parameter( Position = 0, Mandatory = $True )]
       [String]
@@ -455,10 +455,46 @@ function Set-FTA {
     catch {
       Write-Verbose "Write Reg Icon FAILED"
     }
-  }
+    }
 
 
-  function local:Write-ExtensionKeys {
+    function local:Get-MachineIdBytes {
+      try {
+        $machineGuid = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+        if (-not [string]::IsNullOrWhiteSpace($machineGuid)) {
+          return [System.Text.Encoding]::UTF8.GetBytes($machineGuid)
+        }
+      }
+      catch {
+        Write-Verbose "MachineGuid lookup failed, skipping UserChoiceLatest hash support"
+      }
+
+      return $null
+    }
+
+
+    function local:Get-NewHash {
+      param (
+        [Parameter( Position = 0, Mandatory = $True )]
+        [String]
+        $BaseInfo
+      )
+
+      $machineIdBytes = Get-MachineIdBytes
+      if (-not $machineIdBytes) {
+        return $null
+      }
+
+      $hmac = [System.Security.Cryptography.HMACSHA256]::new($machineIdBytes)
+      $hashBytes = $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($BaseInfo.ToLower()))
+
+      # UserChoiceLatest hashes observed in the wild are 8-byte payloads (base64 length 12)
+      $trimmed = $hashBytes[0..7]
+      return [Convert]::ToBase64String($trimmed)
+    }
+
+
+    function local:Write-ExtensionKeys {
     param (
       [Parameter( Position = 0, Mandatory = $True )]
       [String]
@@ -514,14 +550,16 @@ function Set-FTA {
       catch {} 
     } 
 
-    try {
-      $keyPath = "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
-      Write-Verbose "Remove Extension UserChoice Key If Exist: $keyPath"
-      Remove-UserChoiceKey $keyPath
-    }
-    catch {
-      Write-Verbose "Extension UserChoice Key No Exist: $keyPath"
-    }
+      foreach ($choiceKey in 'UserChoice','UserChoiceLatest') {
+        try {
+          $keyPath = "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\$choiceKey"
+          Write-Verbose "Remove Extension $choiceKey Key If Exist: $keyPath"
+          Remove-UserChoiceKey $keyPath
+        }
+        catch {
+          Write-Verbose "Extension $choiceKey Key No Exist: $keyPath"
+        }
+      }
 
 
     try {
@@ -534,17 +572,29 @@ function Set-FTA {
     }
 
 
-    try {
-      $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
-      $registryPath = "Registry::$keyPath"
-      Write-Verbose "Write Reg Extension UserChoice OK"
-      & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
-      & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
-    }
-    catch {
-      throw "Write Reg Extension UserChoice FAILED"
-    }
+      try {
+        $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
+        $registryPath = "Registry::$keyPath"
+        Write-Verbose "Write Reg Extension UserChoice OK"
+        & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
+        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
+        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force}"
+
+        $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience"
+        if ($newHash) {
+          $latestKeyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoiceLatest"
+          $latestRegistryPath = "Registry::$latestKeyPath"
+          Write-Verbose "Write Reg Extension UserChoiceLatest OK"
+          & $powershellTempPath -Command "& {New-Item -Path '$latestRegistryPath' -Force | Out-Null}"
+          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
+          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name Hash -PropertyType String -Value '$newHash' -Force}"
+          & $powershellTempPath -Command "& {New-Item -Path '$latestRegistryPath\\ProgId' -Force | Out-Null}"
+          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath\\ProgId' -Name ProgId -PropertyType String -Value '$ProgId' -Force}"
+        }
+      }
+      catch {
+        throw "Write Reg Extension UserChoice FAILED"
+      }
   }
 
   function local:Write-ProtocolKeys {
