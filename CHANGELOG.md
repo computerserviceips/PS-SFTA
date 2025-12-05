@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Seed `OpenWithProgids` for new associations to suppress the Windows user-choice prompt when the ProgId hash is already applied.
 - Prevent log initialization and write failures from throwing invalid variable reference errors by formatting verbose messages safely.
 - Suppress registry provider output when creating UserChoice and UserChoiceLatest entries so silent mode stays quiet.
+- Preserve log history across config-driven runs, skip association writes when the requested ProgId and hashes are already present, and only restart `explorer.exe` once at the end of a batch when changes (or missing hashes) are applied.
 
 ### Changed
 - Align licensing artifacts with the MIT license, retaining prior Danysys authorship alongside the updated 2025 Computerservice ips copyright.

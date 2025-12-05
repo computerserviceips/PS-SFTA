@@ -347,7 +347,13 @@ function Set-FTA {
     $LogFile,
 
     [switch]
-    $Silent
+    $Silent,
+
+    [switch]
+    $SkipExplorerRestart,
+
+    [switch]
+    $PassThru
   )
 
   $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -365,7 +371,9 @@ function Set-FTA {
         New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
       }
 
-      New-Item -Path $logFilePath -ItemType File -Force | Out-Null
+      if (-not (Test-Path -Path $logFilePath)) {
+        New-Item -Path $logFilePath -ItemType File -Force | Out-Null
+      }
     }
     catch {
       Write-Verbose ("Unable to initialize log file at {0}: {1}" -f $logFilePath, $_)
@@ -425,6 +433,39 @@ function Set-FTA {
     }
 
     return $false
+  }
+
+  function local:Get-CurrentAssociation {
+    param (
+      [Parameter(Mandatory = $true)]
+      [string]
+      $Target
+    )
+
+    $result = [ordered]@{
+      ProgId           = $null
+      Hash             = $null
+      LatestProgId     = $null
+      LatestHash       = $null
+      Type             = 'Extension'
+    }
+
+    if ($Target.Contains('.')) {
+      $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Target\UserChoice" -ErrorAction SilentlyContinue
+      $latestChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Target\UserChoiceLatest" -ErrorAction SilentlyContinue
+      $result.ProgId = $userChoice.ProgId
+      $result.Hash = $userChoice.Hash
+      $result.LatestProgId = $latestChoice.ProgId
+      $result.LatestHash = $latestChoice.Hash
+    }
+    else {
+      $result.Type = 'Protocol'
+      $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Target\UserChoice" -ErrorAction SilentlyContinue
+      $result.ProgId = $userChoice.ProgId
+      $result.Hash = $userChoice.Hash
+    }
+
+    return [PSCustomObject]$result
   }
 
   try {
@@ -580,6 +621,9 @@ function Set-FTA {
       Write-LogMessage "Failed to relaunch explorer.exe. Please start it manually to finalize defaults." 'WARN' 'Yellow'
     }
   }
+
+  $changesApplied = $false
+  $restartRequired = $false
   
 
     function local:Set-Icon {
@@ -624,10 +668,17 @@ function Set-FTA {
       param (
         [Parameter( Position = 0, Mandatory = $True )]
         [String]
-        $BaseInfo
+        $BaseInfo,
+
+        [byte[]]
+        $MachineIdBytes
       )
 
-      $machineIdBytes = Get-MachineIdBytes
+      $machineIdBytes = $MachineIdBytes
+      if (-not $machineIdBytes) {
+        $machineIdBytes = Get-MachineIdBytes
+      }
+
       if (-not $machineIdBytes) {
         return $null
       }
@@ -727,7 +778,7 @@ function Set-FTA {
         & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
         & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force | Out-Null}"
 
-        $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience"
+        $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience" $machineIdBytes
         if ($newHash) {
           $latestKeyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoiceLatest"
           $latestRegistryPath = "Registry::$latestKeyPath"
@@ -1004,31 +1055,66 @@ function Set-FTA {
     $progHash = Get-Hash $baseInfo
     Write-Verbose "Hash: $progHash"
 
-    #Write AssociationToasts List
-    Write-RequiredApplicationAssociationToasts $ProgId $Extension
+    $machineIdBytes = $null
+    if ($Extension.Contains('.')) {
+      $machineIdBytes = Get-MachineIdBytes
+    }
 
-    #Handle Extension Or Protocol
-    if ($Extension.Contains(".")) {
-      Write-Verbose "Write Registry Extension: $Extension"
-      Write-LogMessage "Updating file association registry keys..." 'INFO' 'Cyan'
-      Write-ExtensionKeys $ProgId $Extension $progHash
+    $current = Get-CurrentAssociation $Extension
+    $targetMatches = $current.ProgId -eq $ProgId -and (($current.Type -eq 'Protocol') -or (-not $current.LatestProgId -or $current.LatestProgId -eq $ProgId))
+    $hashesMissing = [string]::IsNullOrWhiteSpace($current.Hash)
 
+    if ($current.Type -eq 'Extension' -and $machineIdBytes) {
+      if (-not $current.LatestProgId -or $current.LatestProgId -ne $ProgId) {
+        $hashesMissing = $true
+      }
+    }
+
+    if ($current.Type -eq 'Extension' -and $current.LatestProgId -and $current.LatestProgId -eq $ProgId) {
+      if ([string]::IsNullOrWhiteSpace($current.LatestHash)) {
+        $hashesMissing = $true
+      }
+    }
+
+    if ($targetMatches -and -not $hashesMissing) {
+      Write-LogMessage "Skipping $targetType '$Extension' because '$ProgId' is already set with required hashes." 'INFO' 'Gray'
+      $restartRequired = $false
     }
     else {
-      Write-Verbose "Write Registry Protocol: $Extension"
-      Write-LogMessage "Updating protocol association registry keys..." 'INFO' 'Cyan'
-      Write-ProtocolKeys $ProgId $Extension $progHash
+      #Write AssociationToasts List
+      Write-RequiredApplicationAssociationToasts $ProgId $Extension
+
+      #Handle Extension Or Protocol
+      if ($Extension.Contains(".")) {
+        Write-Verbose "Write Registry Extension: $Extension"
+        Write-LogMessage "Updating file association registry keys..." 'INFO' 'Cyan'
+        Write-ExtensionKeys $ProgId $Extension $progHash
+
+      }
+      else {
+        Write-Verbose "Write Registry Protocol: $Extension"
+        Write-LogMessage "Updating protocol association registry keys..." 'INFO' 'Cyan'
+        Write-ProtocolKeys $ProgId $Extension $progHash
+      }
+
+      if ($Icon) {
+        Write-Verbose  "Set Icon: $Icon"
+        Set-Icon $ProgId $Icon
+      }
+
+      $changesApplied = $true
+      $restartRequired = $true
+
+      Update-RegistryChanges
+
+      if (-not $SkipExplorerRestart) {
+        Restart-ExplorerShell
+        Write-LogMessage "Defaults applied. Explorer was refreshed so the changes take effect immediately." 'INFO' 'Green'
+      }
+      elseif (-not $Silent) {
+        Write-LogMessage "Defaults applied. Explorer restart is deferred; please restart it to finalize changes." 'INFO' 'Yellow'
+      }
     }
-
-
-    if ($Icon) {
-      Write-Verbose  "Set Icon: $Icon"
-      Set-Icon $ProgId $Icon
-    }
-
-    Update-RegistryChanges
-    Restart-ExplorerShell
-    Write-LogMessage "Defaults applied. Explorer was refreshed so the changes take effect immediately." 'INFO' 'Green'
   }
   finally {
     if ($tempPowerShellCreated) {
@@ -1036,6 +1122,10 @@ function Set-FTA {
         Remove-Item -Path $powershellTempPath -Force -ErrorAction SilentlyContinue
       }
       catch {}
+    }
+
+    if ($PassThru) {
+      Write-Output ([PSCustomObject]@{ Changed = $changesApplied; RestartRequired = $restartRequired })
     }
   }
 
@@ -1098,7 +1188,9 @@ function Set-FTAFromConfig {
         New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
       }
 
-      New-Item -Path $logFilePath -ItemType File -Force | Out-Null
+      if (-not (Test-Path -Path $logFilePath)) {
+        New-Item -Path $logFilePath -ItemType File -Force | Out-Null
+      }
     }
     catch {
       Write-Verbose ("Unable to initialize log file at {0}: {1}" -f $logFilePath, $_)
@@ -1143,6 +1235,8 @@ function Set-FTAFromConfig {
   Write-ConfigLog "Reading associations from config file '$resolvedPath'..." 'INFO' 'Cyan'
 
   $lines = Get-Content -Path $resolvedPath -ErrorAction Stop
+  $restartRequired = $false
+  $changesDetected = $false
 
   foreach ($line in $lines) {
     $trimmed = $line.Trim()
@@ -1158,6 +1252,36 @@ function Set-FTAFromConfig {
     $configProgId = $parts[1]
     $configGroup = if ($parts.Count -ge 3) { $parts[2] } else { $null }
 
-    Set-FTA -ProgId $configProgId -Extension $configExtension -AllowedGroup $configGroup -DomainSID:$DomainSID -SuppressNewAppAlert:$SuppressNewAppAlert -LogFile $logFilePath -Silent:$Silent
+    $result = Set-FTA -ProgId $configProgId -Extension $configExtension -AllowedGroup $configGroup -DomainSID:$DomainSID -SuppressNewAppAlert:$SuppressNewAppAlert -LogFile $logFilePath -Silent:$Silent -SkipExplorerRestart -PassThru
+
+    if ($result) {
+      $changesDetected = $changesDetected -or $result.Changed
+      $restartRequired = $restartRequired -or $result.RestartRequired
+    }
+  }
+
+  if ($restartRequired) {
+    Write-ConfigLog "Restarting explorer.exe once to apply updated defaults..." 'INFO' 'Yellow'
+
+    try {
+      $existing = Get-Process -Name explorer -ErrorAction SilentlyContinue
+      if ($existing) {
+        Stop-Process -Id $existing.Id -Force -ErrorAction Stop
+      }
+    }
+    catch {
+      Write-ConfigLog "Could not stop explorer.exe automatically: $_" 'WARN' 'Yellow'
+    }
+
+    try {
+      Start-Process -FilePath (Join-Path -Path $env:SystemRoot -ChildPath 'explorer.exe') | Out-Null
+      Write-ConfigLog "explorer.exe restarted successfully." 'INFO' 'Green'
+    }
+    catch {
+      Write-ConfigLog "Failed to relaunch explorer.exe. Please start it manually to finalize defaults." 'WARN' 'Yellow'
+    }
+  }
+  elseif (-not $changesDetected) {
+    Write-ConfigLog "No changes were required; explorer.exe restart was not needed." 'INFO' 'Gray'
   }
 }

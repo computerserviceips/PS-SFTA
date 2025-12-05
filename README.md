@@ -94,6 +94,7 @@ Register-FTA "C:\SumatraPDF.exe" .pdf -Icon "shell32.dll,100"
 - Capture a run log via `-LogFile <path>`; if you pass only a filename (no directory), the log is written to your `%TEMP%` directory. Combine this with `-Silent` to run unattended without console output while still writing a transcript.
 - After setting associations, SFTA now restarts `explorer.exe` to immediately apply the new defaults in the shell and file picker dialogs.
 - Use `-AllowedGroup` (or specify a group on each config line) to scope an association update to members of a specific local or domain group.
+- `Set-FTAFromConfig` defers the `explorer.exe` restart until the end of the batch, only restarts when a mapping or missing hash is written, and skips entries that already point to the requested ProgId.
 
 ## Additional Instructions
 
