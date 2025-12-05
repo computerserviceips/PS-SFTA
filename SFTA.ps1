@@ -71,26 +71,27 @@ function Get-FTA {
   $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
   $tempPowerShellCreated = $false
 
-  function local:Invoke-RenamedPowerShell {
-    param (
-      [Parameter(Mandatory = $true)]
-      [scriptblock]
-      $ScriptBlock,
+    function local:Invoke-RenamedPowerShell {
+      param (
+        [Parameter(Mandatory = $true)]
+        [scriptblock]
+        $ScriptBlock,
 
-      [object[]]
-      $ArgumentList = @(),
-    )
+        [object[]]
+        $ArgumentList = @(),
+      )
 
-    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+      $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
 
-    try {
-      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
-      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+      try {
+        Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+        $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+        & $powershellTempPath @invokeArgs
+      }
+      finally {
+        try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+      }
     }
-    finally {
-      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
-    }
-  }
 
   try {
     Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
@@ -173,7 +174,8 @@ function Get-PTA {
 
     try {
       Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
-      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
     }
     finally {
       try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
@@ -272,7 +274,8 @@ function Register-FTA {
 
     try {
       Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
-      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
     }
     finally {
       try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
@@ -360,7 +363,8 @@ function Remove-FTA {
 
     try {
       Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
-      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
     }
     finally {
       try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
@@ -668,7 +672,8 @@ function Set-FTA {
 
     try {
       Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
-      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
     }
     finally {
       try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
