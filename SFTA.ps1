@@ -741,7 +741,7 @@ function Set-FTA {
         $baseKey.Close()
       }
       catch {
-        Write-Verbose "Unable to adjust permissions on HKCU:\$SubKey: $_"
+        Write-Verbose ("Unable to adjust permissions on HKCU:\{0}: {1}" -f $SubKey, $_)
       }
     }
 
