@@ -78,10 +78,18 @@ function Get-FTA {
       $ScriptBlock,
 
       [object[]]
-      $ArgumentList = @()
+      $ArgumentList = @(),
     )
 
-    & $powershellTempPath -NoProfile -NonInteractive -Command $ScriptBlock @ArgumentList
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 
   try {
@@ -158,10 +166,18 @@ function Get-PTA {
       $ScriptBlock,
 
       [object[]]
-      $ArgumentList = @()
+      $ArgumentList = @(),
     )
 
-    & $powershellTempPath -NoProfile -NonInteractive -Command $ScriptBlock @ArgumentList
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 
   try {
@@ -249,10 +265,18 @@ function Register-FTA {
       $ScriptBlock,
 
       [object[]]
-      $ArgumentList = @()
+      $ArgumentList = @(),
     )
 
-    & $powershellTempPath -NoProfile -NonInteractive -Command $ScriptBlock @ArgumentList
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 
   try {
@@ -329,10 +353,18 @@ function Remove-FTA {
       $ScriptBlock,
 
       [object[]]
-      $ArgumentList = @()
+      $ArgumentList = @(),
     )
 
-    & $powershellTempPath -NoProfile -NonInteractive -Command $ScriptBlock @ArgumentList
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 
   try {
@@ -629,10 +661,18 @@ function Set-FTA {
       $ScriptBlock,
 
       [object[]]
-      $ArgumentList = @()
+      $ArgumentList = @(),
     )
 
-    & $powershellTempPath -NoProfile -NonInteractive -Command $ScriptBlock @ArgumentList
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      & $powershellTempPath -NoProfile -NonInteractive -File $tempScriptPath @ArgumentList
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 
   if (Test-Path -Path $ProgId) {
