@@ -700,7 +700,7 @@ function Set-FTA {
         $SubKey
       )
 
-      $desiredRights = [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey -bor [System.Security.AccessControl.RegistryRights]::WriteKey
+      $desiredRights = [System.Security.AccessControl.RegistryRights]::FullControl
 
       try {
         $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
@@ -740,11 +740,12 @@ function Set-FTA {
         $allowRule = New-Object System.Security.AccessControl.RegistryAccessRule(
           $currentSid,
           [System.Security.AccessControl.RegistryRights]::FullControl,
-          [System.Security.AccessControl.InheritanceFlags]::None,
+          [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
           [System.Security.AccessControl.PropagationFlags]::None,
           [System.Security.AccessControl.AccessControlType]::Allow
         )
 
+        $acl.SetAccessRuleProtection($true, $false)
         $acl.SetAccessRule($allowRule)
 
         if ($removed) {
@@ -811,11 +812,12 @@ function Set-FTA {
             $allowRule = New-Object System.Security.AccessControl.RegistryAccessRule(
               $currentSid,
               [System.Security.AccessControl.RegistryRights]::FullControl,
-              [System.Security.AccessControl.InheritanceFlags]::None,
+              [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
               [System.Security.AccessControl.PropagationFlags]::None,
               [System.Security.AccessControl.AccessControlType]::Allow
             )
 
+            $acl.SetAccessRuleProtection($true, $false)
             $acl.SetAccessRule($allowRule)
 
             $retryKey.SetAccessControl($acl)
@@ -928,74 +930,70 @@ function Set-FTA {
             Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
           }
 
-          $setExtensionScript = @'
-param(
-  [string]$UserChoicePath,
-  [string]$UserChoiceProgId,
-  [string]$UserChoiceHash,
-  [string]$LatestChoicePath,
-  [string]$LatestChoiceHash,
-  [bool]$WriteLatest
-)
+          $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Default
+          )
 
-$ErrorActionPreference = 'Stop'
+          $security = New-Object System.Security.AccessControl.RegistrySecurity
+          $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+          $rule = New-Object System.Security.AccessControl.RegistryAccessRule(
+            $currentSid,
+            [System.Security.AccessControl.RegistryRights]::FullControl,
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+          )
+          $security.SetAccessRuleProtection($true, $false)
+          $security.SetOwner($currentSid)
+          $security.AddAccessRule($rule)
 
-New-Item -Path $UserChoicePath -Force | Out-Null
-New-ItemProperty -Path $UserChoicePath -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
-New-ItemProperty -Path $UserChoicePath -Name Hash -PropertyType String -Value $UserChoiceHash -Force | Out-Null
+          $userChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoice"
+          $userChoiceKey = $baseKey.CreateSubKey(
+            $userChoiceSubKey,
+            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+            [System.Security.AccessControl.RegistryOptions]::None,
+            $security
+          )
 
-if ($WriteLatest -and -not [string]::IsNullOrEmpty($LatestChoicePath)) {
-  New-Item -Path $LatestChoicePath -Force | Out-Null
-  New-ItemProperty -Path $LatestChoicePath -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
-  New-ItemProperty -Path $LatestChoicePath -Name Hash -PropertyType String -Value $LatestChoiceHash -Force | Out-Null
+          if (-not $userChoiceKey) {
+            throw "Write Reg Extension UserChoice FAILED: Unable to create $userChoiceSubKey"
+          }
 
-  $progIdSubKey = Join-Path -Path $LatestChoicePath -ChildPath 'ProgId'
-  New-Item -Path $progIdSubKey -Force | Out-Null
-  New-ItemProperty -Path $progIdSubKey -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
-}
-'@
+          $userChoiceKey.SetAccessControl($security)
+          $userChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
+          $userChoiceKey.SetValue('Hash', $ProgHash, [Microsoft.Win32.RegistryValueKind]::String)
 
-          $setExtensionBlock = [scriptblock]::Create($setExtensionScript)
+          if ($newHash -and $latestRegistryPath) {
+            $latestChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
+            $latestChoiceKey = $baseKey.CreateSubKey(
+              $latestChoiceSubKey,
+              [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+              [System.Security.AccessControl.RegistryOptions]::None,
+              $security
+            )
 
-          & $powershellTempPath -NoLogo -NoProfile -NonInteractive -Command $setExtensionBlock -Args @(
-            $registryPath,
-            $ProgId,
-            $ProgHash,
-            $latestRegistryPath,
-            $newHash,
-            [bool]$newHash
-          ) 2>&1 | Out-Null
+            if (-not $latestChoiceKey) {
+              throw "Write Reg Extension UserChoiceLatest FAILED: Unable to create $latestChoiceSubKey"
+            }
+
+            $latestChoiceKey.SetAccessControl($security)
+            $latestChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
+            $latestChoiceKey.SetValue('Hash', $newHash, [Microsoft.Win32.RegistryValueKind]::String)
+
+            $latestProgIdKey = $latestChoiceKey.CreateSubKey('ProgId', [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
+            $latestProgIdKey.SetAccessControl($security)
+            $latestProgIdKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
+            $latestProgIdKey.Close()
+            $latestChoiceKey.Close()
+          }
+
+          $userChoiceKey.Close()
+          $baseKey.Close()
           Write-Verbose "Write Reg Extension UserChoice/UserChoiceLatest OK"
         }
         catch {
-          Write-Verbose "Write Reg Extension UserChoice via helper failed: $_"
-
-          try {
-            $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Default)
-
-            $userChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoice"
-            $userChoiceKey = $baseKey.CreateSubKey($userChoiceSubKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
-            $userChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
-            $userChoiceKey.SetValue('Hash', $ProgHash, [Microsoft.Win32.RegistryValueKind]::String)
-
-            if ($newHash -and $latestRegistryPath) {
-              $latestChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
-              $latestChoiceKey = $baseKey.CreateSubKey($latestChoiceSubKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
-              $latestChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
-              $latestChoiceKey.SetValue('Hash', $newHash, [Microsoft.Win32.RegistryValueKind]::String)
-
-              $latestProgIdKey = $latestChoiceKey.CreateSubKey('ProgId', [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
-              $latestProgIdKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
-              $latestProgIdKey.Close()
-              $latestChoiceKey.Close()
-            }
-
-            $userChoiceKey.Close()
-            $baseKey.Close()
-          }
-          catch {
-            throw "Write Reg Extension UserChoice FAILED: $($_.Exception.Message)"
-          }
+          throw "Write Reg Extension UserChoice FAILED: $($_.Exception.Message)"
         }
   }
 
