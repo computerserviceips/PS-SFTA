@@ -66,45 +66,76 @@ function Get-FTA {
     $Detailed
   )
 
+  $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+  $powershellTempName = "powershell_{0}.exe" -f ([System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetRandomFileName()))
+  $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
+  $tempPowerShellCreated = $false
 
-  if ($Extension) {
-    Write-Verbose "Get File Type Association for $Extension"
+  function local:Invoke-RenamedPowerShell {
+    param (
+      [Parameter(Mandatory = $true)]
+      [scriptblock]
+      $ScriptBlock,
 
-    $assocFile = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice" -ErrorAction SilentlyContinue
+      [object[]]
+      $ArgumentList = @()
+    )
 
-    if ($Detailed) {
-      Write-Output ([PSCustomObject]@{
-          Extension = $Extension
-          ProgId    = $assocFile.ProgId
-          Hash      = $assocFile.Hash
-        })
-    }
-    else {
-      Write-Output $assocFile.ProgId
-    }
+    & $powershellTempPath -NoProfile -NonInteractive -Command $ScriptBlock @ArgumentList
   }
-  else {
-    Write-Verbose "Get File Type Association List"
 
-    $assocList = Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\* |
-    ForEach-Object {
-      $assocFile = Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue
-      if ($assocFile.ProgId) {
-        if ($Detailed) {
+  try {
+    Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
+    $tempPowerShellCreated = $true
+
+    $scriptBlock = {
+      param($extension, $detailed)
+
+      if ($extension) {
+        Write-Verbose "Get File Type Association for $extension"
+
+        $assocFile = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$extension\UserChoice" -ErrorAction SilentlyContinue
+
+        if ($detailed) {
           [PSCustomObject]@{
-            Extension = $_.PSChildName
+            Extension = $extension
             ProgId    = $assocFile.ProgId
             Hash      = $assocFile.Hash
           }
         }
         else {
-          "$($_.PSChildName), $($assocFile.ProgId)"
+          $assocFile.ProgId
+        }
+      }
+      else {
+        Write-Verbose "Get File Type Association List"
+
+        Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\* |
+        ForEach-Object {
+          $assocFile = Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue
+          if ($assocFile.ProgId) {
+            if ($detailed) {
+              [PSCustomObject]@{
+                Extension = $_.PSChildName
+                ProgId    = $assocFile.ProgId
+                Hash      = $assocFile.Hash
+              }
+            }
+            else {
+              "$($_.PSChildName), $($assocFile.ProgId)"
+            }
+          }
         }
       }
     }
-    Write-Output $assocList
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Extension, $Detailed)
   }
-  
+  finally {
+    if ($tempPowerShellCreated) {
+      try { Remove-Item -Path $powershellTempPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
 }
 
 function Get-PTA {
@@ -115,23 +146,55 @@ function Get-PTA {
     $Protocol
   )
 
-  if ($Protocol) {
-    Write-Verbose "Get Protocol Type Association for $Protocol"
+  $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+  $powershellTempName = "powershell_{0}.exe" -f ([System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetRandomFileName()))
+  $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
+  $tempPowerShellCreated = $false
 
-    $assocFile = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Protocol\UserChoice" -ErrorAction SilentlyContinue).ProgId
-    Write-Output $assocFile
+  function local:Invoke-RenamedPowerShell {
+    param (
+      [Parameter(Mandatory = $true)]
+      [scriptblock]
+      $ScriptBlock,
+
+      [object[]]
+      $ArgumentList = @()
+    )
+
+    & $powershellTempPath -NoProfile -NonInteractive -Command $ScriptBlock @ArgumentList
   }
-  else {
-    Write-Verbose "Get Protocol Type Association List"
 
-    $assocList = Get-ChildItem HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\* |
-    ForEach-Object {
-      $progId = (Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue).ProgId
-      if ($progId) {
-        "$($_.PSChildName), $progId"
+  try {
+    Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
+    $tempPowerShellCreated = $true
+
+    $scriptBlock = {
+      param($protocol)
+
+      if ($protocol) {
+        Write-Verbose "Get Protocol Type Association for $protocol"
+
+        (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$protocol\UserChoice" -ErrorAction SilentlyContinue).ProgId
+      }
+      else {
+        Write-Verbose "Get Protocol Type Association List"
+
+        Get-ChildItem HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\* |
+        ForEach-Object {
+          $progId = (Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue).ProgId
+          if ($progId) {
+            "$($_.PSChildName), $progId"
+          }
+        }
       }
     }
-    Write-Output $assocList
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Protocol)
+  }
+  finally {
+    if ($tempPowerShellCreated) {
+      try { Remove-Item -Path $powershellTempPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 }
 
@@ -510,38 +573,44 @@ function Set-FTA {
     return $false
   }
 
-  function local:Get-CurrentAssociation {
-    param (
-      [Parameter(Mandatory = $true)]
-      [string]
-      $Target
-    )
+    function local:Get-CurrentAssociation {
+      param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Target
+      )
 
-    $result = [ordered]@{
-      ProgId           = $null
-      Hash             = $null
-      LatestProgId     = $null
-      LatestHash       = $null
-      Type             = 'Extension'
-    }
+      $scriptBlock = {
+        param($target)
 
-    if ($Target.Contains('.')) {
-      $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Target\UserChoice" -ErrorAction SilentlyContinue
-      $latestChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Target\UserChoiceLatest" -ErrorAction SilentlyContinue
-      $result.ProgId = $userChoice.ProgId
-      $result.Hash = $userChoice.Hash
-      $result.LatestProgId = $latestChoice.ProgId
-      $result.LatestHash = $latestChoice.Hash
-    }
-    else {
-      $result.Type = 'Protocol'
-      $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Target\UserChoice" -ErrorAction SilentlyContinue
-      $result.ProgId = $userChoice.ProgId
-      $result.Hash = $userChoice.Hash
-    }
+        $result = [ordered]@{
+          ProgId           = $null
+          Hash             = $null
+          LatestProgId     = $null
+          LatestHash       = $null
+          Type             = 'Extension'
+        }
 
-    return [PSCustomObject]$result
-  }
+        if ($target.Contains('.')) {
+          $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$target\UserChoice" -ErrorAction SilentlyContinue
+          $latestChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$target\UserChoiceLatest" -ErrorAction SilentlyContinue
+          $result.ProgId = $userChoice.ProgId
+          $result.Hash = $userChoice.Hash
+          $result.LatestProgId = $latestChoice.ProgId
+          $result.LatestHash = $latestChoice.Hash
+        }
+        else {
+          $result.Type = 'Protocol'
+          $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$target\UserChoice" -ErrorAction SilentlyContinue
+          $result.ProgId = $userChoice.ProgId
+          $result.Hash = $userChoice.Hash
+        }
+
+        return [PSCustomObject]$result
+      }
+
+      Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Target)
+    }
 
   try {
     # Use a temporary copy of PowerShell to bypass UCPD.sys registry write restrictions (e.g., KB5034765)
@@ -586,27 +655,31 @@ function Set-FTA {
   Write-Verbose "Extension/Protocol: $Extension"
 
   function local:Disable-NewAppAlertToast {
-    $policyRoots = @('HKCU:\Software\Policies\Microsoft\Windows\Explorer')
+    $scriptBlock = {
+      $policyRoots = @('HKCU:\Software\Policies\Microsoft\Windows\Explorer')
 
-    $principal = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+      $principal = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
 
-    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-      $policyRoots += 'HKLM:\Software\Policies\Microsoft\Windows\Explorer'
-    }
+      if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $policyRoots += 'HKLM:\Software\Policies\Microsoft\Windows\Explorer'
+      }
 
-    foreach ($policyPath in $policyRoots) {
-      try {
-        if (-not (Test-Path -Path $policyPath)) {
-          New-Item -Path $policyPath -Force | Out-Null
+      foreach ($policyPath in $policyRoots) {
+        try {
+          if (-not (Test-Path -Path $policyPath)) {
+            New-Item -Path $policyPath -Force | Out-Null
+          }
+
+          $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
+          Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
         }
-
-        $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
-        Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
-      }
-      catch {
-        Write-Verbose "Failed to disable new app alert toast at $policyPath"
+        catch {
+          Write-Verbose "Failed to disable new app alert toast at $policyPath"
+        }
       }
     }
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock
   }
 
   if ($SuppressNewAppAlert) {
@@ -752,17 +825,22 @@ function Set-FTA {
 
 
     function local:Get-MachineIdBytes {
-      try {
-        $machineGuid = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
-        if (-not [string]::IsNullOrWhiteSpace($machineGuid)) {
-          return [System.Text.Encoding]::UTF8.GetBytes($machineGuid)
+      $scriptBlock = {
+        try {
+          $machineGuid = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+          if (-not [string]::IsNullOrWhiteSpace($machineGuid)) {
+            return [System.Text.Encoding]::UTF8.GetBytes($machineGuid)
+          }
         }
-      }
-      catch {
-        Write-Verbose "MachineGuid lookup failed, skipping UserChoiceLatest hash support"
+        catch {
+          Write-Verbose "MachineGuid lookup failed, skipping UserChoiceLatest hash support"
+        }
+
+        return $null
       }
 
-      return $null
+      Invoke-RenamedPowerShell -ScriptBlock $scriptBlock
+
     }
 
 
