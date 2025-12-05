@@ -692,6 +692,59 @@ function Set-FTA {
     }
 
 
+
+    function local:Clear-CurrentUserDenyRules {
+      param (
+        [Parameter( Position = 0, Mandatory = $True )]
+        [String]
+        $SubKey
+      )
+
+      try {
+        $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+          [Microsoft.Win32.RegistryHive]::CurrentUser,
+          [Microsoft.Win32.RegistryView]::Default
+        )
+
+        $key = $baseKey.CreateSubKey(
+          $SubKey,
+          [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+          [System.Security.AccessControl.RegistryOptions]::None,
+          [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey -bor [System.Security.AccessControl.RegistryRights]::WriteKey
+        )
+
+        if (-not $key) {
+          Write-Verbose "Unable to open HKCU:\$SubKey to adjust permissions"
+          return
+        }
+
+        $acl = $key.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $denyRules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference -eq $currentSid -and $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Deny }
+
+        $removed = $false
+
+        foreach ($rule in $denyRules) {
+          $acl.RemoveAccessRuleSpecific($rule) | Out-Null
+          $removed = $true
+        }
+
+        if ($removed) {
+          $key.SetAccessControl($acl)
+          Write-Verbose "Removed deny permissions for current user on HKCU:\$SubKey"
+        }
+        else {
+          Write-Verbose "No deny permissions for current user on HKCU:\$SubKey"
+        }
+
+        $key.Close()
+        $baseKey.Close()
+      }
+      catch {
+        Write-Verbose "Unable to adjust permissions on HKCU:\$SubKey: $_"
+      }
+    }
+
     function local:Write-ExtensionKeys {
     param (
       [Parameter( Position = 0, Mandatory = $True )]
@@ -773,11 +826,14 @@ function Set-FTA {
         $registryPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
         $latestRegistryPath = $null
 
+        Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoice"
+
         try {
           $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience" $machineIdBytes
 
           if ($newHash) {
             $latestRegistryPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoiceLatest"
+            Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
           }
 
           $setExtensionScript = @"
@@ -878,6 +934,7 @@ if (\$WriteLatest -and -not [string]::IsNullOrEmpty(\$LatestChoicePath)) {
 
     try {
       $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Protocol\UserChoice"
+      Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\$Protocol\\UserChoice"
       $registryPath = "Registry::$keyPath"
       Write-Verbose "Write Reg Protocol UserChoice OK"
         & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
