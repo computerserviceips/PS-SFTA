@@ -737,13 +737,24 @@ function Set-FTA {
           $removed = $true
         }
 
+        $allowRule = New-Object System.Security.AccessControl.RegistryAccessRule(
+          $currentSid,
+          [System.Security.AccessControl.RegistryRights]::FullControl,
+          [System.Security.AccessControl.InheritanceFlags]::None,
+          [System.Security.AccessControl.PropagationFlags]::None,
+          [System.Security.AccessControl.AccessControlType]::Allow
+        )
+
+        $acl.SetAccessRule($allowRule)
+
         if ($removed) {
-          $key.SetAccessControl($acl)
           Write-Verbose "Removed deny permissions for current user on HKCU:\$SubKey"
         }
         else {
           Write-Verbose "No deny permissions for current user on HKCU:\$SubKey"
         }
+
+        $key.SetAccessControl($acl)
 
         $key.Close()
         $baseKey.Close()
@@ -796,6 +807,16 @@ function Set-FTA {
             foreach ($rule in $denyRules) {
               $acl.RemoveAccessRuleSpecific($rule) | Out-Null
             }
+
+            $allowRule = New-Object System.Security.AccessControl.RegistryAccessRule(
+              $currentSid,
+              [System.Security.AccessControl.RegistryRights]::FullControl,
+              [System.Security.AccessControl.InheritanceFlags]::None,
+              [System.Security.AccessControl.PropagationFlags]::None,
+              [System.Security.AccessControl.AccessControlType]::Allow
+            )
+
+            $acl.SetAccessRule($allowRule)
 
             $retryKey.SetAccessControl($acl)
             Write-Verbose "Removed deny permissions for current user on HKCU:\$SubKey after taking ownership"
@@ -934,7 +955,9 @@ if ($WriteLatest -and -not [string]::IsNullOrEmpty($LatestChoicePath)) {
 }
 '@
 
-          & $powershellTempPath -NoLogo -NoProfile -NonInteractive -Command $setExtensionScript -Args @(
+          $setExtensionBlock = [scriptblock]::Create($setExtensionScript)
+
+          & $powershellTempPath -NoLogo -NoProfile -NonInteractive -Command $setExtensionBlock -Args @(
             $registryPath,
             $ProgId,
             $ProgHash,
