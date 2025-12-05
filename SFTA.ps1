@@ -700,6 +700,8 @@ function Set-FTA {
         $SubKey
       )
 
+      $desiredRights = [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey -bor [System.Security.AccessControl.RegistryRights]::WriteKey
+
       try {
         $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
           [Microsoft.Win32.RegistryHive]::CurrentUser,
@@ -709,7 +711,7 @@ function Set-FTA {
         $key = $baseKey.OpenSubKey(
           $SubKey,
           [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
-          [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey -bor [System.Security.AccessControl.RegistryRights]::WriteKey
+          $desiredRights
         )
 
         if (-not $key) {
@@ -745,6 +747,69 @@ function Set-FTA {
 
         $key.Close()
         $baseKey.Close()
+      }
+      catch [System.UnauthorizedAccessException] {
+        Write-Verbose ("Unable to adjust permissions on HKCU:\{0} with standard rights: {1}" -f $SubKey, $_)
+
+        try {
+          $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Default
+          )
+
+          $takeOwnershipRights = [System.Security.AccessControl.RegistryRights]::TakeOwnership -bor [System.Security.AccessControl.RegistryRights]::ReadPermissions
+          $ownershipKey = $baseKey.OpenSubKey(
+            $SubKey,
+            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+            $takeOwnershipRights
+          )
+
+          if (-not $ownershipKey) {
+            $ownershipKey = $baseKey.CreateSubKey(
+              $SubKey,
+              [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree
+            )
+          }
+
+          if (-not $ownershipKey) {
+            Write-Verbose "Unable to take ownership of HKCU:\$SubKey"
+            return
+          }
+
+          $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+          $acl = $ownershipKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access -bor [System.Security.AccessControl.AccessControlSections]::Owner)
+          $acl.SetOwner($currentSid)
+          $ownershipKey.SetAccessControl($acl)
+          $ownershipKey.Close()
+
+          # Retry with desired rights now that ownership was updated
+          $retryKey = $baseKey.OpenSubKey(
+            $SubKey,
+            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+            $desiredRights
+          )
+
+          if ($retryKey) {
+            $acl = $retryKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+            $denyRules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference -eq $currentSid -and $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Deny }
+
+            foreach ($rule in $denyRules) {
+              $acl.RemoveAccessRuleSpecific($rule) | Out-Null
+            }
+
+            $retryKey.SetAccessControl($acl)
+            Write-Verbose "Removed deny permissions for current user on HKCU:\$SubKey after taking ownership"
+            $retryKey.Close()
+          }
+          else {
+            Write-Verbose "Unable to reopen HKCU:\$SubKey after taking ownership"
+          }
+
+          $baseKey.Close()
+        }
+        catch {
+          Write-Verbose ("Unable to take ownership of HKCU:\{0}: {1}" -f $SubKey, $_)
+        }
       }
       catch {
         Write-Verbose ("Unable to adjust permissions on HKCU:\{0}: {1}" -f $SubKey, $_)
