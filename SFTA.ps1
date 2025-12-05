@@ -706,12 +706,18 @@ function Set-FTA {
           [Microsoft.Win32.RegistryView]::Default
         )
 
-        $key = $baseKey.CreateSubKey(
+        $key = $baseKey.OpenSubKey(
           $SubKey,
           [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
-          [System.Security.AccessControl.RegistryOptions]::None,
           [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey -bor [System.Security.AccessControl.RegistryRights]::WriteKey
         )
+
+        if (-not $key) {
+          $key = $baseKey.CreateSubKey(
+            $SubKey,
+            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree
+          )
+        }
 
         if (-not $key) {
           Write-Verbose "Unable to open HKCU:\$SubKey to adjust permissions"
@@ -836,32 +842,32 @@ function Set-FTA {
             Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
           }
 
-          $setExtensionScript = @"
+          $setExtensionScript = @'
 param(
-  [string]\$UserChoicePath,
-  [string]\$UserChoiceProgId,
-  [string]\$UserChoiceHash,
-  [string]\$LatestChoicePath,
-  [string]\$LatestChoiceHash,
-  [bool]\$WriteLatest
+  [string]$UserChoicePath,
+  [string]$UserChoiceProgId,
+  [string]$UserChoiceHash,
+  [string]$LatestChoicePath,
+  [string]$LatestChoiceHash,
+  [bool]$WriteLatest
 )
 
-\$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
-New-Item -Path \$UserChoicePath -Force | Out-Null
-New-ItemProperty -Path \$UserChoicePath -Name ProgId -PropertyType String -Value \$UserChoiceProgId -Force | Out-Null
-New-ItemProperty -Path \$UserChoicePath -Name Hash -PropertyType String -Value \$UserChoiceHash -Force | Out-Null
+New-Item -Path $UserChoicePath -Force | Out-Null
+New-ItemProperty -Path $UserChoicePath -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
+New-ItemProperty -Path $UserChoicePath -Name Hash -PropertyType String -Value $UserChoiceHash -Force | Out-Null
 
-if (\$WriteLatest -and -not [string]::IsNullOrEmpty(\$LatestChoicePath)) {
-  New-Item -Path \$LatestChoicePath -Force | Out-Null
-  New-ItemProperty -Path \$LatestChoicePath -Name ProgId -PropertyType String -Value \$UserChoiceProgId -Force | Out-Null
-  New-ItemProperty -Path \$LatestChoicePath -Name Hash -PropertyType String -Value \$LatestChoiceHash -Force | Out-Null
+if ($WriteLatest -and -not [string]::IsNullOrEmpty($LatestChoicePath)) {
+  New-Item -Path $LatestChoicePath -Force | Out-Null
+  New-ItemProperty -Path $LatestChoicePath -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
+  New-ItemProperty -Path $LatestChoicePath -Name Hash -PropertyType String -Value $LatestChoiceHash -Force | Out-Null
 
-  \$progIdSubKey = Join-Path -Path \$LatestChoicePath -ChildPath 'ProgId'
-  New-Item -Path \$progIdSubKey -Force | Out-Null
-  New-ItemProperty -Path \$progIdSubKey -Name ProgId -PropertyType String -Value \$UserChoiceProgId -Force | Out-Null
+  $progIdSubKey = Join-Path -Path $LatestChoicePath -ChildPath 'ProgId'
+  New-Item -Path $progIdSubKey -Force | Out-Null
+  New-ItemProperty -Path $progIdSubKey -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
 }
-"@
+'@
 
           & $powershellTempPath -NoLogo -NoProfile -NonInteractive -Command $setExtensionScript -Args @(
             $registryPath,
