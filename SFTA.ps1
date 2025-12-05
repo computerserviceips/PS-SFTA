@@ -170,7 +170,7 @@ function Register-FTA {
     $ProgId = "SFTA." + [System.IO.Path]::GetFileNameWithoutExtension($ProgramPath).replace(" ", "") + $Extension
   }
 
-  $progCommand = "\"\"$ProgramPath\"\" \"\"%1\"\""
+  $progCommand = '""{0}"" ""%1""' -f $ProgramPath
   Write-Verbose "ApplicationId: $ProgId"
   Write-Verbose "ApplicationCommand: $progCommand"
 
