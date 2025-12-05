@@ -821,19 +821,27 @@ if (\$WriteLatest -and -not [string]::IsNullOrEmpty(\$LatestChoicePath)) {
           Write-Verbose "Write Reg Extension UserChoice via helper failed: $_"
 
           try {
-            New-Item -Path $registryPath -Force | Out-Null
-            New-ItemProperty -Path $registryPath -Name ProgId -PropertyType String -Value $ProgId -Force | Out-Null
-            New-ItemProperty -Path $registryPath -Name Hash -PropertyType String -Value $ProgHash -Force | Out-Null
+            $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Default)
+
+            $userChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoice"
+            $userChoiceKey = $baseKey.CreateSubKey($userChoiceSubKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
+            $userChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
+            $userChoiceKey.SetValue('Hash', $ProgHash, [Microsoft.Win32.RegistryValueKind]::String)
 
             if ($newHash -and $latestRegistryPath) {
-              New-Item -Path $latestRegistryPath -Force | Out-Null
-              New-ItemProperty -Path $latestRegistryPath -Name ProgId -PropertyType String -Value $ProgId -Force | Out-Null
-              New-ItemProperty -Path $latestRegistryPath -Name Hash -PropertyType String -Value $newHash -Force | Out-Null
+              $latestChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
+              $latestChoiceKey = $baseKey.CreateSubKey($latestChoiceSubKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
+              $latestChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
+              $latestChoiceKey.SetValue('Hash', $newHash, [Microsoft.Win32.RegistryValueKind]::String)
 
-              $latestProgIdPath = Join-Path -Path $latestRegistryPath -ChildPath 'ProgId'
-              New-Item -Path $latestProgIdPath -Force | Out-Null
-              New-ItemProperty -Path $latestProgIdPath -Name ProgId -PropertyType String -Value $ProgId -Force | Out-Null
+              $latestProgIdKey = $latestChoiceKey.CreateSubKey('ProgId', [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
+              $latestProgIdKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
+              $latestProgIdKey.Close()
+              $latestChoiceKey.Close()
             }
+
+            $userChoiceKey.Close()
+            $baseKey.Close()
           }
           catch {
             throw "Write Reg Extension UserChoice FAILED: $($_.Exception.Message)"

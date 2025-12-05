@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevent log initialization and write failures from throwing invalid variable reference errors by formatting verbose messages safely.
 - Suppress registry provider output when creating UserChoice and UserChoiceLatest entries so silent mode stays quiet.
 - Harden UserChoice/UserChoiceLatest writes with a helper fallback so association updates don't fail when the temporary helper cannot create registry values.
+- Use a registry API fallback that creates missing UserChoice/UserChoiceLatest keys directly when helper writes are blocked, avoiding missing-path and access errors.
 - Preserve log history across config-driven runs, skip association writes when the requested ProgId and hashes are already present, and only restart `explorer.exe` once at the end of a batch when changes (or missing hashes) are applied.
 
 ### Changed
