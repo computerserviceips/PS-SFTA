@@ -770,29 +770,75 @@ function Set-FTA {
     }
 
 
-      try {
-        $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
-        $registryPath = "Registry::$keyPath"
-        Write-Verbose "Write Reg Extension UserChoice OK"
-        & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
-        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
-        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force | Out-Null}"
+        $registryPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
+        $latestRegistryPath = $null
 
-        $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience" $machineIdBytes
-        if ($newHash) {
-          $latestKeyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoiceLatest"
-          $latestRegistryPath = "Registry::$latestKeyPath"
-          Write-Verbose "Write Reg Extension UserChoiceLatest OK"
-          & $powershellTempPath -Command "& {New-Item -Path '$latestRegistryPath' -Force | Out-Null}"
-          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
-          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath' -Name Hash -PropertyType String -Value '$newHash' -Force | Out-Null}"
-          & $powershellTempPath -Command "& {New-Item -Path '$latestRegistryPath\\ProgId' -Force | Out-Null}"
-          & $powershellTempPath -Command "& {New-ItemProperty -Path '$latestRegistryPath\\ProgId' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
+        try {
+          $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience" $machineIdBytes
+
+          if ($newHash) {
+            $latestRegistryPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoiceLatest"
+          }
+
+          $setExtensionScript = @"
+param(
+  [string]\$UserChoicePath,
+  [string]\$UserChoiceProgId,
+  [string]\$UserChoiceHash,
+  [string]\$LatestChoicePath,
+  [string]\$LatestChoiceHash,
+  [bool]\$WriteLatest
+)
+
+\$ErrorActionPreference = 'Stop'
+
+New-Item -Path \$UserChoicePath -Force | Out-Null
+New-ItemProperty -Path \$UserChoicePath -Name ProgId -PropertyType String -Value \$UserChoiceProgId -Force | Out-Null
+New-ItemProperty -Path \$UserChoicePath -Name Hash -PropertyType String -Value \$UserChoiceHash -Force | Out-Null
+
+if (\$WriteLatest -and -not [string]::IsNullOrEmpty(\$LatestChoicePath)) {
+  New-Item -Path \$LatestChoicePath -Force | Out-Null
+  New-ItemProperty -Path \$LatestChoicePath -Name ProgId -PropertyType String -Value \$UserChoiceProgId -Force | Out-Null
+  New-ItemProperty -Path \$LatestChoicePath -Name Hash -PropertyType String -Value \$LatestChoiceHash -Force | Out-Null
+
+  \$progIdSubKey = Join-Path -Path \$LatestChoicePath -ChildPath 'ProgId'
+  New-Item -Path \$progIdSubKey -Force | Out-Null
+  New-ItemProperty -Path \$progIdSubKey -Name ProgId -PropertyType String -Value \$UserChoiceProgId -Force | Out-Null
+}
+"@
+
+          & $powershellTempPath -NoLogo -NoProfile -NonInteractive -Command $setExtensionScript -Args @(
+            $registryPath,
+            $ProgId,
+            $ProgHash,
+            $latestRegistryPath,
+            $newHash,
+            [bool]$newHash
+          ) 2>&1 | Out-Null
+          Write-Verbose "Write Reg Extension UserChoice/UserChoiceLatest OK"
         }
-      }
-      catch {
-        throw "Write Reg Extension UserChoice FAILED"
-      }
+        catch {
+          Write-Verbose "Write Reg Extension UserChoice via helper failed: $_"
+
+          try {
+            New-Item -Path $registryPath -Force | Out-Null
+            New-ItemProperty -Path $registryPath -Name ProgId -PropertyType String -Value $ProgId -Force | Out-Null
+            New-ItemProperty -Path $registryPath -Name Hash -PropertyType String -Value $ProgHash -Force | Out-Null
+
+            if ($newHash -and $latestRegistryPath) {
+              New-Item -Path $latestRegistryPath -Force | Out-Null
+              New-ItemProperty -Path $latestRegistryPath -Name ProgId -PropertyType String -Value $ProgId -Force | Out-Null
+              New-ItemProperty -Path $latestRegistryPath -Name Hash -PropertyType String -Value $newHash -Force | Out-Null
+
+              $latestProgIdPath = Join-Path -Path $latestRegistryPath -ChildPath 'ProgId'
+              New-Item -Path $latestProgIdPath -Force | Out-Null
+              New-ItemProperty -Path $latestProgIdPath -Name ProgId -PropertyType String -Value $ProgId -Force | Out-Null
+            }
+          }
+          catch {
+            throw "Write Reg Extension UserChoice FAILED: $($_.Exception.Message)"
+          }
+        }
   }
 
   function local:Write-ProtocolKeys {
