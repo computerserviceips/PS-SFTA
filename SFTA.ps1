@@ -66,45 +66,85 @@ function Get-FTA {
     $Detailed
   )
 
+  $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+  $powershellTempName = "powershell_{0}.exe" -f ([System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetRandomFileName()))
+  $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
+  $tempPowerShellCreated = $false
 
-  if ($Extension) {
-    Write-Verbose "Get File Type Association for $Extension"
+    function local:Invoke-RenamedPowerShell {
+      param (
+        [Parameter(Mandatory = $true)]
+        [scriptblock]
+        $ScriptBlock,
 
-    $assocFile = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice" -ErrorAction SilentlyContinue
+        [object[]]
+        $ArgumentList = @(),
+      )
 
-    if ($Detailed) {
-      Write-Output ([PSCustomObject]@{
-          Extension = $Extension
-          ProgId    = $assocFile.ProgId
-          Hash      = $assocFile.Hash
-        })
+      $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+      try {
+        Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+        $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+        & $powershellTempPath @invokeArgs
+      }
+      finally {
+        try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+      }
     }
-    else {
-      Write-Output $assocFile.ProgId
-    }
-  }
-  else {
-    Write-Verbose "Get File Type Association List"
 
-    $assocList = Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\* |
-    ForEach-Object {
-      $assocFile = Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue
-      if ($assocFile.ProgId) {
-        if ($Detailed) {
+  try {
+    Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
+    $tempPowerShellCreated = $true
+
+    $scriptBlock = {
+      param($extension, $detailed)
+
+      if ($extension) {
+        Write-Verbose "Get File Type Association for $extension"
+
+        $assocFile = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$extension\UserChoice" -ErrorAction SilentlyContinue
+
+        if ($detailed) {
           [PSCustomObject]@{
-            Extension = $_.PSChildName
+            Extension = $extension
             ProgId    = $assocFile.ProgId
             Hash      = $assocFile.Hash
           }
         }
         else {
-          "$($_.PSChildName), $($assocFile.ProgId)"
+          $assocFile.ProgId
+        }
+      }
+      else {
+        Write-Verbose "Get File Type Association List"
+
+        Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\* |
+        ForEach-Object {
+          $assocFile = Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue
+          if ($assocFile.ProgId) {
+            if ($detailed) {
+              [PSCustomObject]@{
+                Extension = $_.PSChildName
+                ProgId    = $assocFile.ProgId
+                Hash      = $assocFile.Hash
+              }
+            }
+            else {
+              "$($_.PSChildName), $($assocFile.ProgId)"
+            }
+          }
         }
       }
     }
-    Write-Output $assocList
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Extension, $Detailed)
   }
-  
+  finally {
+    if ($tempPowerShellCreated) {
+      try { Remove-Item -Path $powershellTempPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
 }
 
 function Get-PTA {
@@ -115,23 +155,64 @@ function Get-PTA {
     $Protocol
   )
 
-  if ($Protocol) {
-    Write-Verbose "Get Protocol Type Association for $Protocol"
+  $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+  $powershellTempName = "powershell_{0}.exe" -f ([System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetRandomFileName()))
+  $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
+  $tempPowerShellCreated = $false
 
-    $assocFile = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Protocol\UserChoice" -ErrorAction SilentlyContinue).ProgId
-    Write-Output $assocFile
+  function local:Invoke-RenamedPowerShell {
+    param (
+      [Parameter(Mandatory = $true)]
+      [scriptblock]
+      $ScriptBlock,
+
+      [object[]]
+      $ArgumentList = @(),
+    )
+
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
-  else {
-    Write-Verbose "Get Protocol Type Association List"
 
-    $assocList = Get-ChildItem HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\* |
-    ForEach-Object {
-      $progId = (Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue).ProgId
-      if ($progId) {
-        "$($_.PSChildName), $progId"
+  try {
+    Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
+    $tempPowerShellCreated = $true
+
+    $scriptBlock = {
+      param($protocol)
+
+      if ($protocol) {
+        Write-Verbose "Get Protocol Type Association for $protocol"
+
+        (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$protocol\UserChoice" -ErrorAction SilentlyContinue).ProgId
+      }
+      else {
+        Write-Verbose "Get Protocol Type Association List"
+
+        Get-ChildItem HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\* |
+        ForEach-Object {
+          $progId = (Get-ItemProperty "$($_.PSParentPath)\$($_.PSChildName)\UserChoice" -ErrorAction SilentlyContinue).ProgId
+          if ($progId) {
+            "$($_.PSChildName), $progId"
+          }
+        }
       }
     }
-    Write-Output $assocList
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Protocol)
+  }
+  finally {
+    if ($tempPowerShellCreated) {
+      try { Remove-Item -Path $powershellTempPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 }
 
@@ -147,11 +228,11 @@ function Register-FTA {
     [Alias("Protocol")]
     [String]
     $Extension,
-    
+
     [Parameter( Position = 2, Mandatory = $false)]
     [String]
     $ProgId,
-    
+
     [Parameter( Position = 3, Mandatory = $false)]
     [String]
     $Icon
@@ -165,26 +246,82 @@ function Register-FTA {
   else {
     Write-Verbose "Protocol: $Extension"
   }
-  
+
   if (!$ProgId) {
     $ProgId = "SFTA." + [System.IO.Path]::GetFileNameWithoutExtension($ProgramPath).replace(" ", "") + $Extension
   }
-  
-  $progCommand = """$ProgramPath"" ""%1"""
-  Write-Verbose "ApplicationId: $ProgId" 
+
+  $progCommand = '""{0}"" ""%1""' -f $ProgramPath
+  Write-Verbose "ApplicationId: $ProgId"
   Write-Verbose "ApplicationCommand: $progCommand"
-  
+
+  $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+  $powershellTempName = "powershell_{0}.exe" -f ([System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetRandomFileName()))
+  $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
+  $tempPowerShellCreated = $false
+
+  function local:Invoke-RenamedPowerShell {
+    param (
+      [Parameter(Mandatory = $true)]
+      [scriptblock]
+      $ScriptBlock,
+
+      [object[]]
+      $ArgumentList = @(),
+    )
+
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+
   try {
-    $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Classes\$Extension\OpenWithProgids"
-    [Microsoft.Win32.Registry]::SetValue( $keyPath, $ProgId, ([byte[]]@()), [Microsoft.Win32.RegistryValueKind]::None)
-    $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Classes\$ProgId\shell\open\command"
-    [Microsoft.Win32.Registry]::SetValue($keyPath, "", $progCommand)
-    Write-Verbose "Register ProgId and ProgId Command OK"
+    Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
+    $tempPowerShellCreated = $true
   }
   catch {
-    throw "Register ProgId and ProgId Command FAILED"
+    throw "Register ProgId and ProgId Command FAILED: Unable to create temporary PowerShell copy"
   }
-  
+
+  try {
+    $scriptBlock = {
+      param($extension, $progId, $progCommand)
+
+      $openWithKeyPath = "HKCU:\SOFTWARE\Classes\$extension\OpenWithProgids"
+      $commandKeyPath = "HKCU:\SOFTWARE\Classes\$progId\shell\open\command"
+
+      try {
+        if (-not (Test-Path -Path $openWithKeyPath)) {
+          New-Item -Path $openWithKeyPath -Force | Out-Null
+        }
+
+        New-ItemProperty -Path $openWithKeyPath -Name $progId -Value ([byte[]]@()) -PropertyType None -Force -ErrorAction Stop | Out-Null
+
+        New-Item -Path $commandKeyPath -Force | Out-Null
+        Set-ItemProperty -Path $commandKeyPath -Name '(default)' -Value $progCommand -Force -ErrorAction Stop | Out-Null
+
+        Write-Verbose "Register ProgId and ProgId Command OK"
+      }
+      catch {
+        throw "Register ProgId and ProgId Command FAILED"
+      }
+    }
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Extension, $ProgId, $progCommand)
+  }
+  finally {
+    if ($tempPowerShellCreated) {
+      try { Remove-Item -Path $powershellTempPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+
   Set-FTA -ProgId $ProgId -Extension $Extension -Icon $Icon
 }
 
@@ -206,55 +343,50 @@ function Remove-FTA {
     [switch]
     $ExtensionOnly
   )
-  
-  function local:Remove-UserChoiceKey {
+
+  $powershellExePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+  $powershellTempName = "powershell_{0}.exe" -f ([System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetRandomFileName()))
+  $powershellTempPath = Join-Path -Path (Split-Path -Path $powershellExePath) -ChildPath $powershellTempName
+  $tempPowerShellCreated = $false
+
+  function local:Invoke-RenamedPowerShell {
     param (
-      [Parameter( Position = 0, Mandatory = $True )]
-      [String]
-      $Key
+      [Parameter(Mandatory = $true)]
+      [scriptblock]
+      $ScriptBlock,
+
+      [object[]]
+      $ArgumentList = @(),
     )
 
-    $code = @'
-    using System;
-    using System.Runtime.InteropServices;
-    using Microsoft.Win32;
-    
-    namespace Registry {
-      public class Utils {
-        [DllImport("advapi32.dll", SetLastError = true)]
-        private static extern int RegOpenKeyEx(UIntPtr hKey, string subKey, int ulOptions, int samDesired, out UIntPtr hkResult);
-    
-        [DllImport("advapi32.dll", SetLastError=true, CharSet = CharSet.Unicode)]
-        private static extern uint RegDeleteKey(UIntPtr hKey, string subKey);
-
-        public static void DeleteKey(string key) {
-          UIntPtr hKey = UIntPtr.Zero;
-          RegOpenKeyEx((UIntPtr)0x80000001u, key, 0, 0x20019, out hKey);
-          RegDeleteKey((UIntPtr)0x80000001u, key);
-        }
-      }
-    }
-'@
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
 
     try {
-      Add-Type -TypeDefinition $code
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
     }
-    catch {}
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
 
-    try {
-      [Registry.Utils]::DeleteKey($Key)
-    }
-    catch {} 
-  } 
+  try {
+    Copy-Item -Path $powershellExePath -Destination $powershellTempPath -Force -ErrorAction Stop
+    $tempPowerShellCreated = $true
+  }
+  catch {
+    throw "Remove-FTA FAILED: Unable to create temporary PowerShell copy"
+  }
 
   function local:Update-Registry {
     $code = @'
-    [System.Runtime.InteropServices.DllImport("Shell32.dll")] 
+    [System.Runtime.InteropServices.DllImport("Shell32.dll")]
     private static extern int SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
     public static void Refresh() {
-        SHChangeNotify(0x8000000, 0, IntPtr.Zero, IntPtr.Zero);    
+        SHChangeNotify(0x8000000, 0, IntPtr.Zero, IntPtr.Zero);
     }
-'@ 
+'@
 
     try {
       Add-Type -MemberDefinition $code -Namespace SHChange -Name Notify
@@ -264,59 +396,101 @@ function Remove-FTA {
     try {
       [SHChange.Notify]::Refresh()
     }
-    catch {} 
+    catch {}
   }
 
-  if ($PSCmdlet.ParameterSetName -eq "ExtensionOnly") {
-    try {
-      $keyPath = "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
-      Write-Verbose "Remove UserChoice Key If Exist: $keyPath"
-      Remove-UserChoiceKey $keyPath
-    }
-    catch {
-      Write-Verbose "UserChoice Key No Exist: $keyPath"
-    }
+  try {
+    if ($PSCmdlet.ParameterSetName -eq "ExtensionOnly") {
+      $scriptBlock = {
+        param($extension)
 
-    Update-Registry
-    Write-Output "Removed: $Extension"
-  }
-  else {
-    if (Test-Path -Path $ProgramPath) {
-      $ProgId = "SFTA." + [System.IO.Path]::GetFileNameWithoutExtension($ProgramPath).replace(" ", "") + $Extension
+        $userChoicePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$extension\UserChoice"
+        if (Test-Path -Path $userChoicePath) {
+          try {
+            Remove-Item -Path $userChoicePath -Recurse -Force -ErrorAction Stop | Out-Null
+            Write-Verbose "Remove UserChoice Key If Exist: $userChoicePath"
+          }
+          catch {
+            Write-Verbose "UserChoice Key No Exist: $userChoicePath"
+          }
+        }
+        else {
+          Write-Verbose "UserChoice Key No Exist: $userChoicePath"
+        }
+      }
+
+      Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Extension)
+
+      Update-Registry
+      Write-Output "Removed: $Extension"
     }
     else {
-      $ProgId = $ProgramPath
+      if (Test-Path -Path $ProgramPath) {
+        $ProgId = "SFTA." + [System.IO.Path]::GetFileNameWithoutExtension($ProgramPath).replace(" ", "") + $Extension
+      }
+      else {
+        $ProgId = $ProgramPath
+      }
+
+      $scriptBlock = {
+        param($extension, $progId)
+
+        $userChoicePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$extension\UserChoice"
+        $classPath = "HKCU:\SOFTWARE\Classes\$progId"
+        $openWithKey = "HKCU:\SOFTWARE\Classes\$extension\OpenWithProgids"
+
+        if (Test-Path -Path $userChoicePath) {
+          try {
+            Remove-Item -Path $userChoicePath -Recurse -Force -ErrorAction Stop | Out-Null
+            Write-Verbose "Remove User UserChoice Key If Exist: $userChoicePath"
+          }
+          catch {
+            Write-Verbose "UserChoice Key No Exist: $userChoicePath"
+          }
+        }
+        else {
+          Write-Verbose "UserChoice Key No Exist: $userChoicePath"
+        }
+
+        if (Test-Path -Path $classPath) {
+          try {
+            Remove-Item -Path $classPath -Recurse -Force -ErrorAction Stop | Out-Null
+            Write-Verbose "Remove Key If Exist: $classPath"
+          }
+          catch {
+            Write-Verbose "Key No Exist: $classPath"
+          }
+        }
+        else {
+          Write-Verbose "Key No Exist: $classPath"
+        }
+
+        if (Test-Path -Path $openWithKey) {
+          try {
+            Remove-ItemProperty -Path $openWithKey -Name $progId -ErrorAction Stop | Out-Null
+            Write-Verbose "Remove Property If Exist: $openWithKey Property $progId"
+          }
+          catch {
+            Write-Verbose "Property No Exist: $openWithKey Property: $progId"
+          }
+        }
+        else {
+          Write-Verbose "Property No Exist: $openWithKey Property: $progId"
+        }
+      }
+
+      Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Extension, $ProgId)
+
+      Update-Registry
+      Write-Output "Removed: $ProgId"
     }
-
-    try {
-      $keyPath = "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
-      Write-Verbose "Remove User UserChoice Key If Exist: $keyPath"
-      Remove-UserChoiceKey $keyPath
-
-      $keyPath = "HKCU:\SOFTWARE\Classes\$ProgId"
-      Write-Verbose "Remove Key If Exist: $keyPath"
-      Remove-Item -Path $keyPath -Recurse -ErrorAction Stop | Out-Null
-
+  }
+  finally {
+    if ($tempPowerShellCreated) {
+      try { Remove-Item -Path $powershellTempPath -Force -ErrorAction SilentlyContinue } catch {}
     }
-    catch {
-      Write-Verbose "Key No Exist: $keyPath"
-    }
-
-    try {
-      $keyPath = "HKCU:\SOFTWARE\Classes\$Extension\OpenWithProgids"
-      Write-Verbose "Remove Property If Exist: $keyPath Property $ProgId"
-      Remove-ItemProperty -Path $keyPath -Name $ProgId -ErrorAction Stop | Out-Null
-
-    }
-    catch {
-      Write-Verbose "Property No Exist: $keyPath Property: $ProgId"
-    }
-
-    Update-Registry
-    Write-Output "Removed: $ProgId"
   }
 }
-
 
 function Set-FTA {
 
@@ -435,38 +609,44 @@ function Set-FTA {
     return $false
   }
 
-  function local:Get-CurrentAssociation {
-    param (
-      [Parameter(Mandatory = $true)]
-      [string]
-      $Target
-    )
+    function local:Get-CurrentAssociation {
+      param (
+        [Parameter(Mandatory = $true)]
+        [string]
+        $Target
+      )
 
-    $result = [ordered]@{
-      ProgId           = $null
-      Hash             = $null
-      LatestProgId     = $null
-      LatestHash       = $null
-      Type             = 'Extension'
-    }
+      $scriptBlock = {
+        param($target)
 
-    if ($Target.Contains('.')) {
-      $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Target\UserChoice" -ErrorAction SilentlyContinue
-      $latestChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Target\UserChoiceLatest" -ErrorAction SilentlyContinue
-      $result.ProgId = $userChoice.ProgId
-      $result.Hash = $userChoice.Hash
-      $result.LatestProgId = $latestChoice.ProgId
-      $result.LatestHash = $latestChoice.Hash
-    }
-    else {
-      $result.Type = 'Protocol'
-      $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Target\UserChoice" -ErrorAction SilentlyContinue
-      $result.ProgId = $userChoice.ProgId
-      $result.Hash = $userChoice.Hash
-    }
+        $result = [ordered]@{
+          ProgId           = $null
+          Hash             = $null
+          LatestProgId     = $null
+          LatestHash       = $null
+          Type             = 'Extension'
+        }
 
-    return [PSCustomObject]$result
-  }
+        if ($target.Contains('.')) {
+          $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$target\UserChoice" -ErrorAction SilentlyContinue
+          $latestChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$target\UserChoiceLatest" -ErrorAction SilentlyContinue
+          $result.ProgId = $userChoice.ProgId
+          $result.Hash = $userChoice.Hash
+          $result.LatestProgId = $latestChoice.ProgId
+          $result.LatestHash = $latestChoice.Hash
+        }
+        else {
+          $result.Type = 'Protocol'
+          $userChoice = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$target\UserChoice" -ErrorAction SilentlyContinue
+          $result.ProgId = $userChoice.ProgId
+          $result.Hash = $userChoice.Hash
+        }
+
+        return [PSCustomObject]$result
+      }
+
+      Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Target)
+    }
 
   try {
     # Use a temporary copy of PowerShell to bypass UCPD.sys registry write restrictions (e.g., KB5034765)
@@ -474,8 +654,30 @@ function Set-FTA {
     $tempPowerShellCreated = $true
   }
   catch {
-    Write-Verbose "Unable to create temporary PowerShell copy; falling back to default executable"
-    $powershellTempPath = $powershellExePath
+    Write-LogMessage "Unable to create a temporary copy of PowerShell. Registry updates cannot proceed." 'ERROR' 'Red'
+    throw
+  }
+
+  function local:Invoke-RenamedPowerShell {
+    param (
+      [Parameter(Mandatory = $true)]
+      [scriptblock]
+      $ScriptBlock,
+
+      [object[]]
+      $ArgumentList = @(),
+    )
+
+    $tempScriptPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("sfta_{0}.ps1" -f [System.IO.Path]::GetRandomFileName())
+
+    try {
+      Set-Content -Path $tempScriptPath -Value $ScriptBlock.ToString() -Force -Encoding UTF8
+      $invokeArgs = @('-NoProfile', '-NonInteractive', '-File', $tempScriptPath) + @($ArgumentList)
+      & $powershellTempPath @invokeArgs
+    }
+    finally {
+      try { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
   }
 
   if (Test-Path -Path $ProgId) {
@@ -498,27 +700,31 @@ function Set-FTA {
   Write-Verbose "Extension/Protocol: $Extension"
 
   function local:Disable-NewAppAlertToast {
-    $policyRoots = @('HKCU:\Software\Policies\Microsoft\Windows\Explorer')
+    $scriptBlock = {
+      $policyRoots = @('HKCU:\Software\Policies\Microsoft\Windows\Explorer')
 
-    $principal = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+      $principal = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
 
-    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-      $policyRoots += 'HKLM:\Software\Policies\Microsoft\Windows\Explorer'
-    }
+      if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $policyRoots += 'HKLM:\Software\Policies\Microsoft\Windows\Explorer'
+      }
 
-    foreach ($policyPath in $policyRoots) {
-      try {
-        if (-not (Test-Path -Path $policyPath)) {
-          New-Item -Path $policyPath -Force | Out-Null
+      foreach ($policyPath in $policyRoots) {
+        try {
+          if (-not (Test-Path -Path $policyPath)) {
+            New-Item -Path $policyPath -Force | Out-Null
+          }
+
+          $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
+          Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
         }
-
-        $toastValue = Set-ItemProperty -Path $policyPath -Name 'NoNewAppAlert' -Value 1 -Type DWord -PassThru -ErrorAction Stop
-        Write-Verbose "New app alert toast disabled: $($toastValue.PSPath)"
-      }
-      catch {
-        Write-Verbose "Failed to disable new app alert toast at $policyPath"
+        catch {
+          Write-Verbose "Failed to disable new app alert toast at $policyPath"
+        }
       }
     }
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock
   }
 
   if ($SuppressNewAppAlert) {
@@ -539,44 +745,51 @@ function Set-FTA {
       [String]
       $Extension
     )
-    
-    try {
-      $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts"
-      [Microsoft.Win32.Registry]::SetValue($keyPath, $ProgId + "_" + $Extension, 0x0) 
-      Write-Verbose ("Write Reg ApplicationAssociationToasts OK: " + $ProgId + "_" + $Extension)
-    }
-    catch {
-      Write-Verbose ("Write Reg ApplicationAssociationToasts FAILED: " + $ProgId + "_" + $Extension)
-    }
-    
-    $allApplicationAssociationToasts = Get-ChildItem -Path HKLM:\SOFTWARE\Classes\$Extension\OpenWithList\* -ErrorAction SilentlyContinue | 
-    ForEach-Object {
-      "Applications\$($_.PSChildName)"
+
+    $scriptBlock = {
+      param($progId, $extension)
+
+      try {
+        $keyPath = "Registry::HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts"
+        New-Item -Path $keyPath -Force | Out-Null
+        Set-ItemProperty -Path $keyPath -Name "$progId`_$extension" -Value 0 -Type DWord -Force -ErrorAction Stop | Out-Null
+        Write-Verbose ("Write Reg ApplicationAssociationToasts OK: " + $progId + "_" + $extension)
+      }
+      catch {
+        Write-Verbose ("Write Reg ApplicationAssociationToasts FAILED: " + $progId + "_" + $extension)
+      }
+
+      $allApplicationAssociationToasts = Get-ChildItem -Path HKLM:\SOFTWARE\Classes\$extension\OpenWithList\* -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        "Applications\$($_.PSChildName)"
+      }
+
+      $allApplicationAssociationToasts += @(
+        ForEach ($item in (Get-ItemProperty -Path HKLM:\SOFTWARE\Classes\$extension\OpenWithProgids -ErrorAction SilentlyContinue).PSObject.Properties ) {
+          if ([string]::IsNullOrEmpty($item.Value) -and $item -ne "(default)") {
+            $item.Name
+          }
+        })
+
+
+      $allApplicationAssociationToasts += Get-ChildItem -Path HKLM:SOFTWARE\Clients\StartMenuInternet\* , HKCU:SOFTWARE\Clients\StartMenuInternet\* -ErrorAction SilentlyContinue |
+      ForEach-Object {
+      (Get-ItemProperty ("$($_.PSPath)\Capabilities\" + (@("URLAssociations", "FileAssociations") | Select-Object -Index $extension.Contains("."))) -ErrorAction SilentlyContinue).$extension
+      }
+
+      $allApplicationAssociationToasts |
+      ForEach-Object { if ($_) {
+          if (Set-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts $_"_"$extension -Value 0 -Type DWord -ErrorAction SilentlyContinue -PassThru) {
+            Write-Verbose  ("Write Reg ApplicationAssociationToastsList OK: " + $_ + "_" + $extension)
+          }
+          else {
+            Write-Verbose  ("Write Reg ApplicationAssociationToastsList FAILED: " + $_ + "_" + $extension)
+          }
+        }
+      }
     }
 
-    $allApplicationAssociationToasts += @(
-      ForEach ($item in (Get-ItemProperty -Path HKLM:\SOFTWARE\Classes\$Extension\OpenWithProgids -ErrorAction SilentlyContinue).PSObject.Properties ) {
-        if ([string]::IsNullOrEmpty($item.Value) -and $item -ne "(default)") {
-          $item.Name
-        }
-      })
-
-    
-    $allApplicationAssociationToasts += Get-ChildItem -Path HKLM:SOFTWARE\Clients\StartMenuInternet\* , HKCU:SOFTWARE\Clients\StartMenuInternet\* -ErrorAction SilentlyContinue | 
-    ForEach-Object {
-    (Get-ItemProperty ("$($_.PSPath)\Capabilities\" + (@("URLAssociations", "FileAssociations") | Select-Object -Index $Extension.Contains("."))) -ErrorAction SilentlyContinue).$Extension
-    }
-    
-    $allApplicationAssociationToasts | 
-    ForEach-Object { if ($_) {
-        if (Set-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts $_"_"$Extension -Value 0 -Type DWord -ErrorAction SilentlyContinue -PassThru) {
-          Write-Verbose  ("Write Reg ApplicationAssociationToastsList OK: " + $_ + "_" + $Extension)
-        }
-        else {
-          Write-Verbose  ("Write Reg ApplicationAssociationToastsList FAILED: " + $_ + "_" + $Extension)
-        }
-      } 
-    }
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($ProgId, $Extension)
 
   }
 
@@ -637,30 +850,42 @@ function Set-FTA {
       $Icon
     )
 
-    try {
-      $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Classes\$ProgId\DefaultIcon"
-      [Microsoft.Win32.Registry]::SetValue($keyPath, "", $Icon) 
-      Write-Verbose "Write Reg Icon OK"
-      Write-Verbose "Reg Icon: $keyPath"
+    $scriptBlock = {
+      param($progId, $icon)
+
+      try {
+        $keyPath = "Registry::HKEY_CURRENT_USER\SOFTWARE\Classes\$progId\DefaultIcon"
+        New-Item -Path $keyPath -Force | Out-Null
+        Set-ItemProperty -Path $keyPath -Name '(default)' -Value $icon -Force -ErrorAction Stop | Out-Null
+        Write-Verbose "Write Reg Icon OK"
+        Write-Verbose "Reg Icon: $keyPath"
+      }
+      catch {
+        Write-Verbose "Write Reg Icon FAILED"
+      }
     }
-    catch {
-      Write-Verbose "Write Reg Icon FAILED"
-    }
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($ProgId, $Icon)
     }
 
 
     function local:Get-MachineIdBytes {
-      try {
-        $machineGuid = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
-        if (-not [string]::IsNullOrWhiteSpace($machineGuid)) {
-          return [System.Text.Encoding]::UTF8.GetBytes($machineGuid)
+      $scriptBlock = {
+        try {
+          $machineGuid = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+          if (-not [string]::IsNullOrWhiteSpace($machineGuid)) {
+            return [System.Text.Encoding]::UTF8.GetBytes($machineGuid)
+          }
         }
-      }
-      catch {
-        Write-Verbose "MachineGuid lookup failed, skipping UserChoiceLatest hash support"
+        catch {
+          Write-Verbose "MachineGuid lookup failed, skipping UserChoiceLatest hash support"
+        }
+
+        return $null
       }
 
-      return $null
+      Invoke-RenamedPowerShell -ScriptBlock $scriptBlock
+
     }
 
 
@@ -700,55 +925,149 @@ function Set-FTA {
         $SubKey
       )
 
-      try {
-        $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
-          [Microsoft.Win32.RegistryHive]::CurrentUser,
-          [Microsoft.Win32.RegistryView]::Default
-        )
+      $scriptBlock = {
+        param($subKey)
 
-        $key = $baseKey.OpenSubKey(
-          $SubKey,
-          [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
-          [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey -bor [System.Security.AccessControl.RegistryRights]::WriteKey
-        )
+        $desiredRights = [System.Security.AccessControl.RegistryRights]::FullControl
 
-        if (-not $key) {
-          $key = $baseKey.CreateSubKey(
-            $SubKey,
-            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree
+        try {
+          $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Default
           )
-        }
 
-        if (-not $key) {
-          Write-Verbose "Unable to open HKCU:\$SubKey to adjust permissions"
-          return
-        }
+          $key = $baseKey.OpenSubKey(
+            $subKey,
+            [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+            $desiredRights
+          )
 
-        $acl = $key.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
-        $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
-        $denyRules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference -eq $currentSid -and $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Deny }
+          if (-not $key) {
+            $key = $baseKey.CreateSubKey(
+              $subKey,
+              [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree
+            )
+          }
 
-        $removed = $false
+          if (-not $key) {
+            Write-Verbose "Unable to open HKCU:\$subKey to adjust permissions"
+            return
+          }
 
-        foreach ($rule in $denyRules) {
-          $acl.RemoveAccessRuleSpecific($rule) | Out-Null
-          $removed = $true
-        }
+          $acl = $key.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+          $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+          $denyRules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference -eq $currentSid -and $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Deny }
 
-        if ($removed) {
+          $removed = $false
+
+          foreach ($rule in $denyRules) {
+            $acl.RemoveAccessRuleSpecific($rule) | Out-Null
+            $removed = $true
+          }
+
+          $allowRule = New-Object System.Security.AccessControl.RegistryAccessRule(
+            $currentSid,
+            [System.Security.AccessControl.RegistryRights]::FullControl,
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+          )
+
+          $acl.SetAccessRuleProtection($true, $false)
+          $acl.SetAccessRule($allowRule)
+
+          if ($removed) {
+            Write-Verbose "Removed deny permissions for current user on HKCU:\$subKey"
+          }
+          else {
+            Write-Verbose "No deny permissions for current user on HKCU:\$subKey"
+          }
+
           $key.SetAccessControl($acl)
-          Write-Verbose "Removed deny permissions for current user on HKCU:\$SubKey"
-        }
-        else {
-          Write-Verbose "No deny permissions for current user on HKCU:\$SubKey"
-        }
 
-        $key.Close()
-        $baseKey.Close()
+          $key.Close()
+          $baseKey.Close()
+        }
+        catch [System.UnauthorizedAccessException] {
+          Write-Verbose ("Unable to adjust permissions on HKCU:\{0} with standard rights: {1}" -f $subKey, $_)
+
+          try {
+            $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+              [Microsoft.Win32.RegistryHive]::CurrentUser,
+              [Microsoft.Win32.RegistryView]::Default
+            )
+
+            $takeOwnershipRights = [System.Security.AccessControl.RegistryRights]::TakeOwnership -bor [System.Security.AccessControl.RegistryRights]::ReadPermissions
+            $ownershipKey = $baseKey.OpenSubKey(
+              $subKey,
+              [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+              $takeOwnershipRights
+            )
+
+            if (-not $ownershipKey) {
+              $ownershipKey = $baseKey.CreateSubKey(
+                $subKey,
+                [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree
+              )
+            }
+
+            if (-not $ownershipKey) {
+              Write-Verbose "Unable to take ownership of HKCU:\$subKey"
+              return
+            }
+
+            $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+            $acl = $ownershipKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access -bor [System.Security.AccessControl.AccessControlSections]::Owner)
+            $acl.SetOwner($currentSid)
+            $ownershipKey.SetAccessControl($acl)
+            $ownershipKey.Close()
+
+            # Retry with desired rights now that ownership was updated
+            $retryKey = $baseKey.OpenSubKey(
+              $subKey,
+              [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+              $desiredRights
+            )
+
+            if ($retryKey) {
+              $acl = $retryKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+              $denyRules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference -eq $currentSid -and $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Deny }
+
+              foreach ($rule in $denyRules) {
+                $acl.RemoveAccessRuleSpecific($rule) | Out-Null
+              }
+
+              $allowRule = New-Object System.Security.AccessControl.RegistryAccessRule(
+                $currentSid,
+                [System.Security.AccessControl.RegistryRights]::FullControl,
+                [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+                [System.Security.AccessControl.PropagationFlags]::None,
+                [System.Security.AccessControl.AccessControlType]::Allow
+              )
+
+              $acl.SetAccessRuleProtection($true, $false)
+              $acl.SetAccessRule($allowRule)
+
+              $retryKey.SetAccessControl($acl)
+              Write-Verbose "Removed deny permissions for current user on HKCU:\$subKey after taking ownership"
+              $retryKey.Close()
+            }
+            else {
+              Write-Verbose "Unable to reopen HKCU:\$subKey after taking ownership"
+            }
+
+            $baseKey.Close()
+          }
+          catch {
+            Write-Verbose ("Unable to take ownership of HKCU:\{0}: {1}" -f $subKey, $_)
+          }
+        }
+        catch {
+          Write-Verbose ("Unable to adjust permissions on HKCU:\{0}: {1}" -f $subKey, $_)
+        }
       }
-      catch {
-        Write-Verbose ("Unable to adjust permissions on HKCU:\{0}: {1}" -f $SubKey, $_)
-      }
+
+      Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($SubKey)
     }
 
     function local:Write-ExtensionKeys {
@@ -765,151 +1084,72 @@ function Set-FTA {
       [String]
       $ProgHash
     )
-    
 
-    function local:Remove-UserChoiceKey {
-      param (
-        [Parameter( Position = 0, Mandatory = $True )]
-        [String]
-        $Key
-      )
+    $scriptBlock = {
+      param($extension, $progId, $progHash, $newHash)
 
-      $code = @'
-      using System;
-      using System.Runtime.InteropServices;
-      using Microsoft.Win32;
-      
-      namespace Registry {
-        public class Utils {
-          [DllImport("advapi32.dll", SetLastError = true)]
-          private static extern int RegOpenKeyEx(UIntPtr hKey, string subKey, int ulOptions, int samDesired, out UIntPtr hkResult);
-      
-          [DllImport("advapi32.dll", SetLastError=true, CharSet = CharSet.Unicode)]
-          private static extern uint RegDeleteKey(UIntPtr hKey, string subKey);
-  
-          public static void DeleteKey(string key) {
-            UIntPtr hKey = UIntPtr.Zero;
-            RegOpenKeyEx((UIntPtr)0x80000001u, key, 0, 0x20019, out hKey);
-            RegDeleteKey((UIntPtr)0x80000001u, key);
-          }
-        }
-      }
-'@
-  
-      try {
-        Add-Type -TypeDefinition $code
-      }
-      catch {}
-
-      try {
-        [Registry.Utils]::DeleteKey($Key)
-      }
-      catch {} 
-    } 
+      $basePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$extension"
 
       foreach ($choiceKey in 'UserChoice','UserChoiceLatest') {
-        try {
-          $keyPath = "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\$choiceKey"
-          Write-Verbose "Remove Extension $choiceKey Key If Exist: $keyPath"
-          Remove-UserChoiceKey $keyPath
-        }
-        catch {
-          Write-Verbose "Extension $choiceKey Key No Exist: $keyPath"
+        $choicePath = "$basePath\$choiceKey"
+        if (Test-Path -Path $choicePath) {
+          try {
+            Remove-Item -Path $choicePath -Recurse -Force -ErrorAction Stop
+            Write-Verbose "Remove Extension $choiceKey Key OK: $choicePath"
+          }
+          catch {
+            Write-Verbose "Extension $choiceKey Key No Exist: $choicePath"
+          }
         }
       }
 
-
-    try {
-      $openWithKeyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\OpenWithProgids"
-      [Microsoft.Win32.Registry]::SetValue($openWithKeyPath, $ProgId, ([byte[]]@()), [Microsoft.Win32.RegistryValueKind]::None)
-      Write-Verbose "Write Reg Extension OpenWithProgids OK: $openWithKeyPath"
-    }
-    catch {
-      Write-Verbose "Write Reg Extension OpenWithProgids FAILED: $openWithKeyPath"
-    }
-
-
-        $registryPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoice"
-        $latestRegistryPath = $null
-
-        Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoice"
-
-        try {
-          $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience" $machineIdBytes
-
-          if ($newHash) {
-            $latestRegistryPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\UserChoiceLatest"
-            Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
-          }
-
-          $setExtensionScript = @'
-param(
-  [string]$UserChoicePath,
-  [string]$UserChoiceProgId,
-  [string]$UserChoiceHash,
-  [string]$LatestChoicePath,
-  [string]$LatestChoiceHash,
-  [bool]$WriteLatest
-)
-
-$ErrorActionPreference = 'Stop'
-
-New-Item -Path $UserChoicePath -Force | Out-Null
-New-ItemProperty -Path $UserChoicePath -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
-New-ItemProperty -Path $UserChoicePath -Name Hash -PropertyType String -Value $UserChoiceHash -Force | Out-Null
-
-if ($WriteLatest -and -not [string]::IsNullOrEmpty($LatestChoicePath)) {
-  New-Item -Path $LatestChoicePath -Force | Out-Null
-  New-ItemProperty -Path $LatestChoicePath -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
-  New-ItemProperty -Path $LatestChoicePath -Name Hash -PropertyType String -Value $LatestChoiceHash -Force | Out-Null
-
-  $progIdSubKey = Join-Path -Path $LatestChoicePath -ChildPath 'ProgId'
-  New-Item -Path $progIdSubKey -Force | Out-Null
-  New-ItemProperty -Path $progIdSubKey -Name ProgId -PropertyType String -Value $UserChoiceProgId -Force | Out-Null
-}
-'@
-
-          & $powershellTempPath -NoLogo -NoProfile -NonInteractive -Command $setExtensionScript -Args @(
-            $registryPath,
-            $ProgId,
-            $ProgHash,
-            $latestRegistryPath,
-            $newHash,
-            [bool]$newHash
-          ) 2>&1 | Out-Null
-          Write-Verbose "Write Reg Extension UserChoice/UserChoiceLatest OK"
+      try {
+        $openWithKeyPath = "$basePath\OpenWithProgids"
+        if (-not (Test-Path -Path $openWithKeyPath)) {
+          New-Item -Path $openWithKeyPath -Force | Out-Null
         }
-        catch {
-          Write-Verbose "Write Reg Extension UserChoice via helper failed: $_"
 
-          try {
-            $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Default)
+        New-ItemProperty -Path $openWithKeyPath -Name $progId -Value ([byte[]]@()) -PropertyType None -Force -ErrorAction Stop | Out-Null
+        Write-Verbose "Write Reg Extension OpenWithProgids OK: $openWithKeyPath"
+      }
+      catch {
+        Write-Verbose "Write Reg Extension OpenWithProgids FAILED: $openWithKeyPath"
+      }
 
-            $userChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoice"
-            $userChoiceKey = $baseKey.CreateSubKey($userChoiceSubKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
-            $userChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
-            $userChoiceKey.SetValue('Hash', $ProgHash, [Microsoft.Win32.RegistryValueKind]::String)
+      try {
+        $userChoicePath = "$basePath\UserChoice"
+        New-Item -Path $userChoicePath -Force | Out-Null
+        New-ItemProperty -Path $userChoicePath -Name 'ProgId' -Value $progId -PropertyType String -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -Path $userChoicePath -Name 'Hash' -Value $progHash -PropertyType String -Force -ErrorAction Stop | Out-Null
 
-            if ($newHash -and $latestRegistryPath) {
-              $latestChoiceSubKey = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
-              $latestChoiceKey = $baseKey.CreateSubKey($latestChoiceSubKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
-              $latestChoiceKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
-              $latestChoiceKey.SetValue('Hash', $newHash, [Microsoft.Win32.RegistryValueKind]::String)
+        if ($newHash) {
+          $latestChoicePath = "$basePath\UserChoiceLatest"
+          New-Item -Path $latestChoicePath -Force | Out-Null
+          New-ItemProperty -Path $latestChoicePath -Name 'ProgId' -Value $progId -PropertyType String -Force -ErrorAction Stop | Out-Null
+          New-ItemProperty -Path $latestChoicePath -Name 'Hash' -Value $newHash -PropertyType String -Force -ErrorAction Stop | Out-Null
 
-              $latestProgIdKey = $latestChoiceKey.CreateSubKey('ProgId', [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)
-              $latestProgIdKey.SetValue('ProgId', $ProgId, [Microsoft.Win32.RegistryValueKind]::String)
-              $latestProgIdKey.Close()
-              $latestChoiceKey.Close()
-            }
-
-            $userChoiceKey.Close()
-            $baseKey.Close()
-          }
-          catch {
-            throw "Write Reg Extension UserChoice FAILED: $($_.Exception.Message)"
-          }
+          $latestProgIdPath = "$latestChoicePath\ProgId"
+          New-Item -Path $latestProgIdPath -Force | Out-Null
+          New-ItemProperty -Path $latestProgIdPath -Name 'ProgId' -Value $progId -PropertyType String -Force -ErrorAction Stop | Out-Null
         }
-  }
+
+        Write-Verbose "Write Reg Extension UserChoice/UserChoiceLatest OK"
+      }
+      catch {
+        throw "Write Reg Extension UserChoice FAILED: $($_.Exception.Message)"
+      }
+    }
+
+    Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoice"
+
+    $newHash = Get-NewHash "$Extension$userSid$ProgId$userDateTime$userExperience" $machineIdBytes
+
+    if ($newHash) {
+      Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$Extension\\UserChoiceLatest"
+    }
+
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Extension, $ProgId, $ProgHash, $newHash)
+    }
 
   function local:Write-ProtocolKeys {
     param (
@@ -925,32 +1165,40 @@ if ($WriteLatest -and -not [string]::IsNullOrEmpty($LatestChoicePath)) {
       [String]
       $ProgHash
     )
-      
 
-    try {
-      $keyPath = "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Protocol\UserChoice"
-      Write-Verbose "Remove Protocol UserChoice Key If Exist: $keyPath"
-      Remove-Item -Path $keyPath -Recurse -ErrorAction Stop | Out-Null
+    $scriptBlock = {
+      param($protocol, $progId, $progHash)
 
-    }
-    catch {
-      Write-Verbose "Protocol UserChoice Key No Exist: $keyPath"
+      $userChoicePath = "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$protocol\UserChoice"
+
+      try {
+        if (Test-Path -Path $userChoicePath) {
+          Remove-Item -Path $userChoicePath -Recurse -Force -ErrorAction Stop | Out-Null
+          Write-Verbose "Remove Protocol UserChoice Key If Exist: $userChoicePath"
+        }
+        else {
+          Write-Verbose "Protocol UserChoice Key No Exist: $userChoicePath"
+        }
+      }
+      catch {
+        Write-Verbose "Protocol UserChoice Key No Exist: $userChoicePath"
+      }
+
+      try {
+        New-Item -Path $userChoicePath -Force | Out-Null
+        New-ItemProperty -Path $userChoicePath -Name 'ProgId' -PropertyType String -Value $progId -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -Path $userChoicePath -Name 'Hash' -PropertyType String -Value $progHash -Force -ErrorAction Stop | Out-Null
+        Write-Verbose "Write Reg Protocol UserChoice OK"
+      }
+      catch {
+        throw "Write Reg Protocol UserChoice FAILED"
+      }
     }
 
+    Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\$Protocol\\UserChoice"
 
-    try {
-      $keyPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$Protocol\UserChoice"
-      Clear-CurrentUserDenyRules "Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\$Protocol\\UserChoice"
-      $registryPath = "Registry::$keyPath"
-      Write-Verbose "Write Reg Protocol UserChoice OK"
-        & $powershellTempPath -Command "& {New-Item -Path '$registryPath' -Force | Out-Null}"
-        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name ProgId -PropertyType String -Value '$ProgId' -Force | Out-Null}"
-        & $powershellTempPath -Command "& {New-ItemProperty -Path '$registryPath' -Name Hash -PropertyType String -Value '$ProgHash' -Force | Out-Null}"
-    }
-    catch {
-      throw "Write Reg Protocol UserChoice FAILED"
-    }
-    
+    Invoke-RenamedPowerShell -ScriptBlock $scriptBlock -ArgumentList @($Protocol, $ProgId, $ProgHash)
+
   }
 
   
